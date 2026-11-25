@@ -18,6 +18,8 @@ One desktop window for finding, downloading and keeping single-player game train
 
 Double-click, no Python required. macOS and Linux users can run from source.
 
+[Product page](https://ew-wlee.github.io/TrainerHub/) · [Architecture notes](docs/architecture.md)
+
 </div>
 
 ![TrainerHub discover page](docs/screenshots/01-discover.png)

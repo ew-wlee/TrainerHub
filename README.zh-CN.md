@@ -18,6 +18,8 @@
 
 双击即用，不需要装 Python。macOS / Linux 可从源码运行。
 
+[产品主页](https://ew-wlee.github.io/TrainerHub/) · [架构说明](docs/architecture.md)
+
 </div>
 
 ![TrainerHub 发现页](docs/screenshots/01-discover.png)
