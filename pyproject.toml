@@ -1,0 +1,66 @@
+[project]
+name = "trainerhub"
+version = "0.1.0"
+description = "TrainerHub — a desktop manager that aggregates, downloads and organises single-player game trainers."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ew-wlee", url = "https://github.com/ew-wlee" }]
+keywords = ["game", "trainer", "cheats", "desktop", "pyside6"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+]
+dependencies = [
+    "pyside6>=6.7,<6.10",
+    "httpx>=0.27",
+    "selectolax>=0.3.21",
+    "pypinyin>=0.53",
+    "rapidfuzz>=3.9",
+    "platformdirs>=4.2",
+    "py7zr>=0.21",
+]
+
+[project.scripts]
+trainerhub = "trainerhub.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "pyinstaller>=6.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trainerhub"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# Qt requires sentinel defaults (B008) and its signal plumbing reads better with
+# explicit try/except blocks than with contextlib.suppress.
+ignore = ["E501", "B008", "SIM102", "SIM105", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["trainerhub"]

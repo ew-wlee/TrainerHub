@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #07090d;
+  --color-ink-900: #0e1116;
+  --color-ink-850: #12161d;
+  --color-ink-800: #151a21;
+  --color-ink-700: #1c232c;
+  --color-ink-600: #232b36;
+
+  --color-mist-50: #f7f9fc;
+  --color-mist-100: #e6eaf2;
+  --color-mist-300: #b6becd;
+  --color-mist-400: #98a2b3;
+  --color-mist-600: #5c6672;
+
+  --color-brand-300: #7faeff;
+  --color-brand-400: #4e8cff;
+  --color-brand-600: #3a6fe0;
+  --color-mint-400: #2dd4bf;
+  --color-amber-400: #f5a524;
+
+  --font-sans: ui-sans-serif, "Segoe UI", "PingFang SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ink-950);
+    color: var(--color-mist-100);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-brand-400) 40%, transparent);
+    color: white;
+  }
+}
+
+@layer utilities {
+  .grid-veil {
+    background-image: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.045) 1px,
+        transparent 1px
+      ),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 20%, transparent 78%);
+  }
+
+  .aurora {
+    background:
+      radial-gradient(60% 50% at 20% 0%, rgba(78, 140, 255, 0.22), transparent 70%),
+      radial-gradient(45% 45% at 85% 10%, rgba(45, 212, 191, 0.14), transparent 70%),
+      radial-gradient(40% 60% at 50% 100%, rgba(78, 140, 255, 0.1), transparent 70%);
+  }
+
+  .glass {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045),
+      rgba(255, 255, 255, 0.015)
+    );
+    backdrop-filter: blur(12px);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .ring-hairline {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  }
+
+  .glow-frame {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08),
+      0 30px 80px -20px rgba(78, 140, 255, 0.35),
+      0 10px 40px -10px rgba(0, 0, 0, 0.8);
+  }
+}
+
+@keyframes float-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-float-up {
+  animation: float-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.5);
+  }
+  50% {
+    opacity: 0.75;
+    box-shadow: 0 0 0 6px rgba(45, 212, 191, 0);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-up,
+  .animate-pulse-dot {
+    animation: none;
+  }
+}

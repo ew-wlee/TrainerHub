@@ -1,0 +1,602 @@
+/* TrainerHub — dark theme */
+
+* {
+    outline: none;
+}
+
+QWidget {
+    color: @text;
+    font-family: "@body_font";
+    font-size: 13px;
+}
+
+#Root, QMainWindow, QDialog {
+    background-color: @bg;
+}
+
+QToolTip {
+    background-color: @elevated;
+    color: @text;
+    border: 1px solid @line_strong;
+    border-radius: 6px;
+    padding: 6px 9px;
+}
+
+/* ---------- side rail ---------- */
+#SideRail {
+    background-color: @surface;
+    border-right: 1px solid @line;
+}
+
+#BrandName {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
+#BrandTag {
+    color: @dim;
+    font-size: 11px;
+}
+
+#NavSection {
+    color: @dim;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    padding: 14px 10px 6px 10px;
+}
+
+QPushButton#NavButton {
+    text-align: left;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 8px;
+    color: @muted;
+    background: transparent;
+    font-size: 13px;
+}
+
+QPushButton#NavButton:hover {
+    background-color: @hover;
+    color: @text;
+}
+
+QPushButton#NavButton[active="true"] {
+    background-color: @primary_soft;
+    color: @text;
+    font-weight: 600;
+    border-left: 2px solid @primary;
+    padding-left: 10px;
+}
+
+QPushButton#SourceButton {
+    text-align: left;
+    padding: 7px 12px;
+    border: none;
+    border-radius: 7px;
+    color: @muted;
+    background: transparent;
+    font-size: 12px;
+}
+
+QPushButton#SourceButton:hover {
+    background-color: @hover;
+    color: @text;
+}
+
+QPushButton#SourceButton[active="true"] {
+    color: @primary;
+    background-color: @primary_soft;
+    font-weight: 600;
+}
+
+#RailFooter {
+    color: @dim;
+    font-size: 11px;
+    border-top: 1px solid @line;
+    padding-top: 10px;
+}
+
+/* ---------- top bar ---------- */
+#TopBar {
+    background-color: @surface;
+    border-bottom: 1px solid @line;
+}
+
+QLineEdit#SearchBox {
+    background-color: @elevated;
+    border: 1px solid @line;
+    border-radius: 9px;
+    padding: 8px 14px;
+    color: @text;
+    selection-background-color: @primary;
+    selection-color: #FFFFFF;
+}
+
+QLineEdit#SearchBox:hover {
+    border-color: @line_strong;
+}
+
+QLineEdit#SearchBox:focus {
+    border-color: @primary;
+    background-color: @surface;
+}
+
+QLineEdit#SearchBox::placeholder {
+    color: @dim;
+}
+
+QPushButton#IconButton {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 7px 11px;
+    color: @muted;
+}
+
+QPushButton#IconButton:hover {
+    background-color: @hover;
+    color: @text;
+    border-color: @line;
+}
+
+/* ---------- buttons ---------- */
+QPushButton#PrimaryButton {
+    background-color: @primary;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-weight: 600;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #5E98FF;
+}
+
+QPushButton#PrimaryButton:pressed {
+    background-color: @primary_deep;
+}
+
+QPushButton#PrimaryButton:disabled {
+    background-color: @elevated;
+    color: @dim;
+}
+
+QPushButton#GhostButton {
+    background-color: transparent;
+    color: @text;
+    border: 1px solid @line_strong;
+    border-radius: 8px;
+    padding: 8px 16px;
+}
+
+QPushButton#GhostButton:hover {
+    border-color: @primary;
+    color: @primary;
+    background-color: @primary_soft;
+}
+
+QPushButton#GhostButton:disabled {
+    color: @dim;
+    border-color: @line;
+}
+
+QPushButton#DangerButton {
+    background-color: transparent;
+    color: @danger;
+    border: 1px solid @danger_soft;
+    border-radius: 8px;
+    padding: 8px 16px;
+}
+
+QPushButton#DangerButton:hover {
+    background-color: @danger_soft;
+}
+
+QPushButton#LinkButton {
+    background: transparent;
+    border: none;
+    color: @primary;
+    padding: 2px 4px;
+    text-align: left;
+}
+
+QPushButton#LinkButton:hover {
+    color: #7FAEFF;
+    text-decoration: underline;
+}
+
+/* ---------- headings ---------- */
+#PageTitle {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+#PageSubtitle {
+    color: @muted;
+    font-size: 12px;
+}
+
+#SectionTitle {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+#FieldLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: @text;
+}
+
+#FieldHint {
+    font-size: 11px;
+    color: @dim;
+}
+
+/* ---------- detail panel ---------- */
+#DetailPanel {
+    background-color: @surface;
+    border-left: 1px solid @line;
+}
+
+#DetailTitle {
+    font-size: 19px;
+    font-weight: 600;
+}
+
+#DetailAlias {
+    color: @muted;
+    font-size: 12px;
+}
+
+#MetaKey {
+    color: @dim;
+    font-size: 11px;
+}
+
+#MetaValue {
+    color: @text;
+    font-size: 12px;
+}
+
+#DetailBody {
+    color: @muted;
+    font-size: 12px;
+}
+
+#OptionFrame {
+    background-color: @surface;
+    border: 1px solid @line;
+    border-radius: 8px;
+}
+
+#OptionText {
+    background: transparent;
+    border: none;
+    color: @text;
+    font-family: "@mono_font";
+    font-size: 11px;
+    selection-background-color: @primary;
+    selection-color: #FFFFFF;
+}
+
+#NoticeBox {
+    background-color: @warn_soft;
+    border: 1px solid rgba(245, 165, 36, 0.22);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: @warn;
+    font-size: 11px;
+}
+
+#AccentNotice {
+    background-color: @primary_soft;
+    border: 1px solid rgba(78, 140, 255, 0.22);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: @primary;
+    font-size: 11px;
+}
+
+/* ---------- cards / stats ---------- */
+#Card {
+    background-color: @surface;
+    border: 1px solid @line;
+    border-radius: 10px;
+}
+
+#StatCard {
+    background-color: @surface;
+    border: 1px solid @line;
+    border-radius: 10px;
+}
+
+#StatValue {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+#StatLabel {
+    color: @dim;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+}
+
+#RowCard {
+    background-color: @surface;
+    border: 1px solid @line;
+    border-radius: 10px;
+}
+
+#RowCard:hover {
+    border-color: @line_strong;
+    background-color: @elevated;
+}
+
+#RowTitle {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#RowSub {
+    color: @muted;
+    font-size: 11px;
+}
+
+#Badge {
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+#Badge[level="primary"] {
+    background-color: @primary_soft;
+    color: @primary;
+}
+
+#Badge[level="success"] {
+    background-color: @success_soft;
+    color: @success;
+}
+
+#Badge[level="warn"] {
+    background-color: @warn_soft;
+    color: @warn;
+}
+
+#Badge[level="danger"] {
+    background-color: @danger_soft;
+    color: @danger;
+}
+
+/* ---------- list ---------- */
+QListView#TrainerList {
+    background-color: transparent;
+    border: none;
+    padding: 4px 2px;
+}
+
+QListView#TrainerList::item {
+    border: none;
+}
+
+/* ---------- inputs ---------- */
+QComboBox, QSpinBox, QLineEdit#Field {
+    background-color: @elevated;
+    border: 1px solid @line;
+    border-radius: 8px;
+    padding: 7px 10px;
+    color: @text;
+    min-height: 18px;
+}
+
+QComboBox:hover, QSpinBox:hover, QLineEdit#Field:hover {
+    border-color: @line_strong;
+}
+
+QComboBox:focus, QSpinBox:focus, QLineEdit#Field:focus {
+    border-color: @primary;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 22px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: @elevated;
+    border: 1px solid @line_strong;
+    border-radius: 8px;
+    padding: 4px;
+    selection-background-color: @primary_soft;
+    selection-color: @text;
+    outline: none;
+}
+
+QCheckBox {
+    spacing: 8px;
+    color: @text;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid @line_strong;
+    background-color: @elevated;
+}
+
+QCheckBox::indicator:hover {
+    border-color: @primary;
+}
+
+QCheckBox::indicator:checked {
+    background-color: @primary;
+    border-color: @primary;
+    image: none;
+}
+
+/* ---------- progress ---------- */
+QProgressBar {
+    background-color: @elevated;
+    border: none;
+    border-radius: 3px;
+    height: 6px;
+    text-align: center;
+    color: transparent;
+}
+
+QProgressBar::chunk {
+    border-radius: 3px;
+    background-color: @primary;
+}
+
+QProgressBar[state="done"]::chunk {
+    background-color: @success;
+}
+
+QProgressBar[state="failed"]::chunk {
+    background-color: @danger;
+}
+
+/* ---------- scrollbars ---------- */
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px 2px 4px 0;
+}
+
+QScrollBar::handle:vertical {
+    background: @line_strong;
+    border-radius: 4px;
+    min-height: 32px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: @dim;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    height: 0;
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+}
+
+QScrollBar::handle:horizontal {
+    background: @line_strong;
+    border-radius: 4px;
+    min-width: 32px;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+    background: none;
+}
+
+/* ---------- misc ---------- */
+#Divider {
+    background-color: @line;
+    max-height: 1px;
+    min-height: 1px;
+    border: none;
+}
+
+#StatusBar {
+    background-color: @surface;
+    border-top: 1px solid @line;
+    color: @dim;
+    font-size: 11px;
+}
+
+#EmptyTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: @text;
+}
+
+#EmptyBody {
+    font-size: 12px;
+    color: @muted;
+}
+
+QSplitter::handle {
+    background-color: transparent;
+    width: 1px;
+}
+
+QSplitter::handle:hover {
+    background-color: @primary;
+}
+
+QScrollArea {
+    border: none;
+    background: transparent;
+}
+
+/* The viewport and its content widget are separate widgets from the scroll
+   area itself; without this they fall back to the platform window colour. */
+QScrollArea > QWidget > QWidget,
+QAbstractScrollArea::corner {
+    background: transparent;
+}
+
+QStackedWidget,
+QStackedWidget > QWidget {
+    background: transparent;
+}
+
+#Toast {
+    background-color: @elevated;
+    border: 1px solid @line_strong;
+    border-radius: 9px;
+    color: @text;
+    padding: 10px 16px;
+    font-size: 12px;
+}
+
+QMenu {
+    background-color: @elevated;
+    border: 1px solid @line_strong;
+    border-radius: 8px;
+    padding: 5px;
+}
+
+QMenu::item {
+    padding: 7px 22px 7px 14px;
+    border-radius: 6px;
+    color: @text;
+}
+
+QMenu::item:selected {
+    background-color: @primary_soft;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: @line;
+    margin: 4px 8px;
+}
+
+QListWidget {
+    background-color: transparent;
+    border: none;
+}
+
+QListWidget::item {
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: @text;
+}
+
+QListWidget::item:selected {
+    background-color: @primary_soft;
+}

@@ -1,0 +1,39 @@
+# --- 本地参考仓库（上游 GPL 项目，仅用于对照，永不提交） ---
+reference/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- 构建产物 ---
+build/
+dist/
+*.spec.bak
+packaging/__pycache__/
+
+# --- Node / Next.js 展示站 ---
+node_modules/
+site/.next/
+site/out/
+site/.turbo/
+*.tsbuildinfo
+
+# --- 运行时数据（本地修改器库、缓存、日志） ---
+TrainerHubLibrary/
+*.log
+logs/
+
+# --- 系统 / 编辑器 ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
