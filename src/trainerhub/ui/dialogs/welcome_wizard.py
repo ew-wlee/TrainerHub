@@ -120,9 +120,7 @@ class WelcomeWizard(QDialog):
             ("custom", "source.custom"),
         ):
             check = QCheckBox(tr(label_key))
-            check.setChecked(self.config.source_enabled(source_id) or source_id == "fling")
-            if source_id == "custom":
-                check.setChecked(False)
+            check.setChecked(True)
             layout.addWidget(check)
             self.source_checks[source_id] = check
         hint = QLabel(tr("detail.external_hint"))

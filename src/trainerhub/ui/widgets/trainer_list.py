@@ -170,6 +170,17 @@ class TrainerDelegate(QStyledItemDelegate):
                              int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), label)
             right -= 98
 
+        details_rect = QRect(rect.right() - 142, rect.center().y() - 16, 60, 32)
+        download_rect = QRect(rect.right() - 76, rect.center().y() - 16, 60, 32)
+        for button_rect, text, primary in ((details_rect, tr("action.details"), False),
+                                           (download_rect, tr("action.download_short"), True)):
+            painter.setPen(theme_tokens.color(self.theme, "line_strong") if not primary else Qt.PenStyle.NoPen)
+            painter.setBrush(theme_tokens.color(self.theme, "primary" if primary else "surface"))
+            painter.drawRoundedRect(button_rect, 7, 7)
+            painter.setPen(QColor("#FFFFFF") if primary else theme_tokens.color(self.theme, "text"))
+            painter.drawText(button_rect, int(Qt.AlignmentFlag.AlignCenter), text)
+        right = min(right, details_rect.left() - 12)
+
         title_font = QFont(option.font)
         title_font.setPointSizeF(10.5)
         title_font.setWeight(QFont.Weight.Medium)
@@ -178,28 +189,29 @@ class TrainerDelegate(QStyledItemDelegate):
         title_metrics = QFontMetrics(title_font)
         title = title_metrics.elidedText(entry.game.name if entry else (item.game_name or item.title), Qt.TextElideMode.ElideRight, max(0, right - left))
         painter.drawText(
-            QRect(left, rect.top() + 10, right - left, 20),
+            QRect(left, rect.top(), right - left, rect.height()),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
             title,
-        )
-
-        sub_font = QFont(option.font)
-        sub_font.setPointSizeF(8.9)
-        painter.setFont(sub_font)
-        painter.setPen(theme_tokens.color(self.theme, "dim"))
-        source_name = self._source_names.get(item.source_id, item.source_id)
-        subtitle = f"{source_name} · {tr('discovery.fallback')}" if item.source_id == "xiaoxing" else source_name
-        sub_metrics = QFontMetrics(sub_font)
-        subtitle = sub_metrics.elidedText(subtitle, Qt.TextElideMode.ElideRight, right - left)
-        painter.drawText(
-            QRect(left, rect.top() + 30, right - left, 16),
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            subtitle,
         )
 
         painter.restore()
 
     def editorEvent(self, event, model, option, index) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            rect = option.rect
+            position = event.position().toPoint()
+            if QRect(rect.right() - 142, rect.center().y() - 16, 60, 32).contains(position):
+                self.owner.view.setCurrentIndex(index)
+                return True
+            if QRect(rect.right() - 76, rect.center().y() - 16, 60, 32).contains(position):
+                item = index.data(ITEM_ROLE)
+                entry = index.data(ENTRY_ROLE)
+                if item is not None and (entry is None or entry.state in SELECTABLE):
+                    if entry is not None and entry.action == "external":
+                        self.owner.open_page_requested.emit(item)
+                    else:
+                        self.owner.download_requested.emit(item)
+                return True
         if not index.flags() & Qt.ItemFlag.ItemIsUserCheckable:
             return False
         toggle = False

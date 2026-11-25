@@ -155,8 +155,8 @@ class DetailPanel(QWidget):
         self.title.setText(entry.game.name)
         confidence = tr(f"discovery.confidence.{entry.confidence}")
         self.match_note.setText(tr("discovery.match", confidence=confidence, reason=entry.reason))
-        self.match_note.show()
-        self.exclude_button.show()
+        self.match_note.hide()
+        self.exclude_button.hide()
         self._direct = entry.action == "download"
         if entry.action == "external" and self._installed is None:
             self.primary_button.setText(tr("action.open_page"))

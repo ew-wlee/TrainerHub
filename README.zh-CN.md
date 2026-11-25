@@ -1,59 +1,41 @@
-<div align="center">
-
-<img src="src/trainerhub/resources/app_mark.svg" width="40" alt="" />
-
 # TrainerHub 修改器管家
 
-[English](README.md) | **简体中文**
+[English](README.md) · 简体中文
 
-找到修改器，装好，去玩。
+TrainerHub 是一个 Windows 桌面工具，帮助单机游戏玩家查找和管理修改器。你可以搜索游戏，也可以扫描本地 Steam 游戏，从推荐列表中选择需要的修改器。
 
-一个只管单机游戏修改器的小工具：搜索、下载、解压、归档。
+[下载最新版 TrainerHub.exe](https://github.com/ew-wlee/TrainerHub/releases/latest)
 
-[![Release](https://img.shields.io/github/v/release/ew-wlee/TrainerHub?color=191817&label=release)](https://github.com/ew-wlee/TrainerHub/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2E6B4E.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-191817.svg)](#安装)
+## 使用
 
-### [下载 Windows 版 TrainerHub.exe](https://github.com/ew-wlee/TrainerHub/releases/latest)
+1. 下载并打开 `TrainerHub.exe`，首次运行时选择保存目录和数据源。
+2. 在「发现」中搜索游戏，或扫描 Steam 游戏并查看推荐。搜索支持中文、英文和拼音；联网搜索向风灵月影发送查询词。
+3. 下载支持直链的修改器。程序会解压并归档文件；需要网盘下载的条目会打开来源页面。
+4. 在「我的修改器」中查看下载进度，搜索已归档的修改器，或打开目录、运行和删除。
 
-60 MB · 免安装 · 不需要账号 · 不需要 Python
+Steam 扫描只读取本机安装清单。推荐依据游戏名称匹配，并不保证修改器与当前游戏版本兼容，请在使用前自行核对。下载的程序不会自动运行。
 
-</div>
-
-<img src="docs/screenshots/01-discover.png" alt="TrainerHub：搜索游戏、选中、下载修改器" width="100%" />
-
-## 它做什么
-
-- **只搜一次。** 风灵月影和小幸修改器合并成一个列表，支持中文名、英文名、拼音全拼和首字母。
-- **一键装好。** 下载后校验、解压，按游戏名归档到独立文件夹。
-- **库里找得到。** 已安装的修改器按游戏列出，打开目录、运行或删除。
-
-## 安装
-
-下载上面的 `TrainerHub.exe`，双击即可。Windows 10 / 11，不需要安装其他东西。
-
-修改器默认存放在 `%USERPROFILE%\TrainerHub\Library`，可以在设置里改。
+默认库目录位于 `%LOCALAPPDATA%\TrainerHub\Library`，可以在设置中更改。程序不需要账号或本机 Python 环境。
 
 ## 从源码运行
 
+需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)：
+
 ```bash
-# Python 3.12+ 与 uv
 uv sync
 uv run trainerhub
 ```
 
-自己打包 exe：
+运行测试并构建 Windows 程序：
 
 ```bash
 uv sync --extra dev
+uv run pytest
 uv run pyinstaller packaging/trainerhub.spec --noconfirm
-# → dist/TrainerHub.exe
 ```
 
-## 说明
+## 数据来源与许可
 
-修改器只用于单机离线游戏。在联机对局中使用可能导致账号被封。
+TrainerHub 索引第三方网站公开的信息并调度下载，不托管、镜像或再分发修改器文件。项目与风灵月影、小幸修改器及游戏发行商没有关联，也不提供反作弊绕过功能。第三方网站变更可能影响搜索或下载。
 
-TrainerHub 只索引来源站公开的元数据并调度下载，不内置、不镜像、不再分发任何修改器文件，也不提供反作弊绕过手段；与风灵月影、小幸修改器及各游戏发行商均无关联。
-
-MIT 许可。架构说明在 [`docs/architecture.md`](docs/architecture.md)。
+修改器面向单机离线游戏；使用第三方可执行文件前请自行判断风险。项目以 [MIT 许可](LICENSE)发布，技术设计见 [架构说明](docs/architecture.md)。

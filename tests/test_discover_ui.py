@@ -127,7 +127,7 @@ def test_row_selection_opens_only_detail_and_medium_download_has_no_confirmation
     rect = window.discover.view.visual_rect_for_row(0)
     QTest.mouseClick(window.discover.view.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(100, rect.center().y()))
     assert window.discover.detail.isVisible()
-    assert window.discover.detail.match_note.isVisible()
+    assert window.discover.detail.match_note.isHidden()
     assert window.download_worker.queued == []
     QTest.mouseClick(window.discover.batch_button, Qt.MouseButton.LeftButton)
     assert window.download_worker.queued == [entry.item]
@@ -519,3 +519,44 @@ def test_cleanup_waits_until_discovery_thread_finishes(window, monkeypatch):
     window.shutdown_discovery()
     assert ended.is_set()
     assert all(not worker.isRunning() for worker in window.discovery_controller._workers)
+
+
+def test_library_search_is_local_and_preserves_installed_order(window):
+    for remote, name, when in [("old", "Old Game", "2024-01-01"), ("new", "New Game", "2025-01-01")]:
+        window.library.db.installed_upsert(InstalledItem("fling", remote, name, "1", "/tmp/" + remote, installed_at=when))
+    window._switch_page("library")
+    rows = [window.library_page.container_layout.itemAt(i).widget().record.game_name for i in range(2)]
+    assert rows == ["New Game", "Old Game"]
+    window.search_box.setText("old")
+    assert window.library_page.container_layout.itemAt(0).widget().record.game_name == "Old Game"
+    assert window.library_page.container_layout.count() == 2  # one row and stretch
+    assert not window._remote_timer.isActive()
+    window._switch_page("discover")
+    assert window.search_box.text() == ""
+
+
+def test_downloads_in_library_hide_completed_and_offer_retry(window):
+    trainer = item()
+    window._enqueue_download(trainer)
+    job_id = "fling:elden-ring"
+    assert window.stack.currentWidget() is window.library_page
+    row = window.downloads._rows[job_id]
+    assert not window.downloads.isHidden()
+    window._on_job_state(job_id, "failed", "network error")
+    assert not row.retry_button.isHidden()
+    QTest.mouseClick(row.retry_button, Qt.MouseButton.LeftButton)
+    assert len(window.download_worker.queued) == 2
+    window._on_job_state(job_id, "done", "")
+    assert window.downloads.isHidden()
+
+
+def test_welcome_sources_default_selected_without_changing_existing_settings(app, tmp_path):
+    from trainerhub.ui.dialogs.welcome_wizard import WelcomeWizard
+
+    config = Config(tmp_path / "config.json", {"sources": {"xiaoxing": {"enabled": False}}})
+    wizard = WelcomeWizard(config)
+    assert all(check.isChecked() for check in wizard.source_checks.values())
+    assert not config.source_enabled("xiaoxing")
+    wizard._apply()
+    assert all(config.source_enabled(source) for source in ("fling", "xiaoxing", "custom"))
+    assert config.get("sources.custom.index_url") == ""

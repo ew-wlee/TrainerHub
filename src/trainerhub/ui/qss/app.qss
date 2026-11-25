@@ -624,3 +624,9 @@ QListWidget::item {
 QListWidget::item:selected {
     background-color: @sunken;
 }
+
+#SideRail { background-color: #F0EFE9; }
+#DiscoverySummary { background-color: #E9EEE6; border: 1px solid #DDE5DA; border-radius: 12px; }
+#DiscoveryToolbar { background: transparent; border: none; }
+QPushButton#NavButton[active="true"] { background-color: #DEE3D9; color: #253D2D; }
+QPushButton:focus, QLineEdit:focus, QListView:focus { border: 1px solid #839F88; }

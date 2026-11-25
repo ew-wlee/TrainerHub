@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         self.sources = sources
         self.items = items
         self.on_rebuild = on_rebuild
-        self.source_filter = config.get("ui.last_source", "all") or "all"
+        self.source_filter = "all"
         self._current: CatalogItem | None = None
         self._detail_pending: set[tuple[str, str]] = set()
 
@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
         self.download_worker: DownloadWorker | None = workers.get("download")
 
         self.setWindowTitle(f"{APP_NAME} · {VERSION}")
-        self.setWindowIcon(QIcon(str(resource_path("resources", "app_icon.svg"))))
+        self.setWindowIcon(QIcon(str(resource_path("resources", "app_mark.svg"))))
         self.setMinimumSize(960, 540)
         self.resize(1024, 576)
 
@@ -141,19 +141,7 @@ class MainWindow(QMainWindow):
         top_layout.setContentsMargins(14, 8, 14, 8)
         top_layout.setSpacing(10)
 
-        mark = QLabel()
-        mark.setObjectName("BrandMark")
-        pixmap = QPixmap(str(resource_path("resources", "app_mark.svg")))
-        if not pixmap.isNull():
-            mark.setPixmap(
-                pixmap.scaled(
-                    16,
-                    16,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
-        self.brand = QLabel(APP_NAME)
+        self.brand = QLabel(tr("nav.discover"))
         self.brand.setObjectName("BrandName")
 
         self.search_box = QLineEdit()
@@ -181,13 +169,11 @@ class MainWindow(QMainWindow):
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.settings_button.setToolTip(tr("nav.settings"))
 
-        top_layout.addWidget(mark)
         top_layout.addWidget(self.brand)
-        top_layout.addSpacing(8)
+        top_layout.addStretch(1)
         top_layout.addWidget(self.search_box)
         top_layout.addWidget(self.status_label)
         top_layout.addWidget(self.remote_retry_button)
-        top_layout.addStretch(1)
         top_layout.addWidget(self.sync_button)
         top_layout.addWidget(self.settings_button)
         right_layout.addWidget(top_bar)
@@ -200,7 +186,7 @@ class MainWindow(QMainWindow):
         self.settings = SettingsPage(self.config)
         self.discover.set_source_names(self._source_names())
         self.stack.addWidget(self.discover)
-        self.stack.addWidget(self.downloads)
+        self.library_page.add_downloads(self.downloads)
         self.stack.addWidget(self.library_page)
         self.stack.addWidget(self.settings)
         right_layout.addWidget(self.stack, 1)
@@ -246,6 +232,7 @@ class MainWindow(QMainWindow):
         controller.failed.connect(lambda message: self.toast.show_message(message[:160], 3600))
 
         self.downloads.cancel_requested.connect(self._cancel_download)
+        self.downloads.retry_requested.connect(lambda item: self._enqueue_download(item, switch_page=False))
 
         self.library_page.import_requested.connect(self._import_folder)
         self.library_page.update_check_requested.connect(self._check_updates)
@@ -317,10 +304,14 @@ class MainWindow(QMainWindow):
         self.source_filter = source_id
         self.config.set("ui.last_source", source_id)
         self._invalidate_search()
-        self._switch_page("discover")
+        if self.stack.currentWidget() is not self.discover:
+            self._switch_page("discover")
         self._remote_timer.start()
 
     def _on_search_text(self, text: str) -> None:
+        if self.stack.currentWidget() is self.library_page:
+            self._refresh_library()
+            return
         searching = bool(text.strip())
         if searching and not self._was_searching:
             self._plan_current_key = self._current.key if self._current else None
@@ -397,7 +388,7 @@ class MainWindow(QMainWindow):
             self._run_search()
 
     def _remote_allowed(self, query: str) -> bool:
-        return (not self._closing and len(query) >= 2 and self.source_filter in {"all", "fling", "xiaoxing"}
+        return (self.stack.currentWidget() is self.discover and not self._closing and len(query) >= 2 and self.source_filter in {"all", "fling", "xiaoxing"}
                 and self.config.source_enabled("fling") and "fling" in self.sources)
 
     def _remote_terms(self, query: str) -> list[str]:
@@ -645,7 +636,7 @@ class MainWindow(QMainWindow):
         self.download_worker.enqueue(item)
         self.toast.show_message(tr("toast.download.queued"), 1800)
         if switch_page:
-            self._switch_page("downloads")
+            self._switch_page("library")
 
     def _cancel_download(self, job_id: str) -> None:
         if self.download_worker is not None:
@@ -689,7 +680,8 @@ class MainWindow(QMainWindow):
     # -- library ----------------------------------------------------------
     def _refresh_library(self) -> None:
         records = self.library.db.installed_all()
-        self.library_page.set_records(records)
+        query = self.search_box.text().strip().casefold() if self.stack.currentWidget() is self.library_page else ""
+        self.library_page.set_records([record for record in records if query in record.game_name.casefold()])
         self.discover.set_installed_keys(self._installed_keys())
 
     def _import_folder(self) -> None:
@@ -749,13 +741,22 @@ class MainWindow(QMainWindow):
 
     # -- misc -------------------------------------------------------------
     def _switch_page(self, page: str) -> None:
-        mapping = {"discover": 0, "downloads": 1, "library": 2, "settings": 3}
-        index = mapping.get(page, 0)
-        self.stack.setCurrentIndex(index)
-        self.rail.set_active_page(page if page in mapping and page != "settings" else "")
+        mapping = {"discover": 0, "library": 1, "settings": 2}
+        self._search_timer.stop()
+        self._remote_timer.stop()
+        self._invalidate_search()
+        self.search_box.blockSignals(True)
+        self.search_box.clear()
+        self.search_box.blockSignals(False)
+        self._was_searching = False
+        self.stack.setCurrentIndex(mapping.get(page, 0))
+        self.rail.set_active_page(page if page != "settings" else "")
+        self.brand.setText(tr("nav.library") if page == "library" else tr("nav.discover"))
+        self.search_box.setVisible(page != "settings")
+        self.search_box.setPlaceholderText(tr("library.search.placeholder") if page == "library" else tr("search.placeholder"))
         if page == "library":
             self._refresh_library()
-        if page == "discover":
+        elif page == "discover":
             self._run_search()
 
     def _on_library_changed(self, folder: str) -> None:

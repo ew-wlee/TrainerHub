@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QSplitter,
     QStackedLayout,
@@ -55,8 +56,25 @@ class DiscoverPage(QWidget):
 
         list_host = QWidget()
         list_layout = QVBoxLayout(list_host)
-        list_layout.setContentsMargins(0, 0, 0, 0)
-        list_layout.setSpacing(0)
+        list_layout.setContentsMargins(24, 18, 24, 18)
+        list_layout.setSpacing(10)
+        heading = QLabel(tr("nav.discover"))
+        heading.setObjectName("PageTitle")
+        list_layout.addWidget(heading)
+        self.summary = QWidget()
+        self.summary.setObjectName("DiscoverySummary")
+        summary_layout = QHBoxLayout(self.summary)
+        summary_layout.setContentsMargins(16, 12, 16, 12)
+        text = QVBoxLayout()
+        title = QLabel(tr("discovery.summary.title"))
+        title.setObjectName("SectionTitle")
+        self.summary_text = QLabel("")
+        self.summary_text.setObjectName("PageSubtitle")
+        text.addWidget(title)
+        text.addWidget(self.summary_text)
+        summary_layout.addLayout(text, 1)
+        list_layout.addWidget(self.summary)
+        self.summary.hide()
 
         self.toolbar = QWidget()
         self.toolbar.setObjectName("DiscoveryToolbar")
@@ -80,8 +98,8 @@ class DiscoverPage(QWidget):
         actions.addWidget(self.select_all)
         actions.addWidget(self.batch_button)
         actions.addStretch(1)
-        actions.addWidget(self.manage_button)
-        actions.addWidget(self.rescan_button)
+        summary_layout.addWidget(self.manage_button)
+        summary_layout.addWidget(self.rescan_button)
         actions.addWidget(self.cancel_button)
         self.toolbar.hide()
         self.cancel_button.hide()
@@ -150,6 +168,7 @@ class DiscoverPage(QWidget):
     def set_items(self, items: list[CatalogItem]) -> None:
         self._plan_mode = False
         self.toolbar.hide()
+        self.summary.hide()
         self.model.set_items(items)
         self.stack.setCurrentIndex(0 if items else 1)
         if not items:
@@ -177,6 +196,8 @@ class DiscoverPage(QWidget):
         self.select_all.blockSignals(False)
         self.select_all.setEnabled(bool(selectable) and not self._busy)
         self.batch_button.setEnabled(any(entry.selected for entry in selectable) and not self._busy)
+        self.summary_text.setText(tr("discovery.summary.count", count=len(entries)))
+        self.summary.setVisible(has_games)
         self.toolbar.setVisible(has_games or self._busy)
         self.select_all.setVisible(bool(entries))
         self.batch_button.setVisible(bool(entries))
@@ -206,6 +227,7 @@ class DiscoverPage(QWidget):
         self._plan_mode = mode != "noresult"
         self._empty_action = ""
         self.toolbar.hide()
+        self.summary.hide()
         if mode == "noresult":
             if preferred_suppressed:
                 self.empty.set_text(tr("search.remote.preferred"), "", tr("search.remote.show_all"))

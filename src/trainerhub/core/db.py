@@ -198,7 +198,7 @@ class Database:
     # -- installed library ------------------------------------------------
     def installed_all(self) -> list[InstalledItem]:
         with self._lock:
-            cursor = self._conn.execute("SELECT * FROM installed ORDER BY installed_at DESC")
+            cursor = self._conn.execute("SELECT * FROM installed ORDER BY installed_at DESC, rowid DESC")
             return [InstalledItem(**dict(row)) for row in cursor.fetchall()]
 
     def installed_get(self, source_id: str, remote_id: str) -> InstalledItem | None:
@@ -211,7 +211,7 @@ class Database:
 
     def installed_upsert(self, record: InstalledItem) -> None:
         if not record.installed_at:
-            record.installed_at = datetime.now().isoformat(timespec="seconds")
+            record.installed_at = datetime.now().isoformat(timespec="microseconds")
         with self._lock:
             self._conn.execute(
                 "INSERT INTO installed (source_id, remote_id, game_name, version, path, size_bytes,"

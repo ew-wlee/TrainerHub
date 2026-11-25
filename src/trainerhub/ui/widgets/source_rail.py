@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from ...core.paths import resource_path
 from ...i18n import tr
 from .common import repolish
 
 NAV_ITEMS = (
     ("discover", "nav.discover"),
-    ("downloads", "nav.downloads"),
     ("library", "nav.library"),
 )
 
@@ -28,6 +29,16 @@ class SourceRail(QWidget):
         layout.setContentsMargins(8, 10, 8, 10)
         layout.setSpacing(1)
 
+        brand = QHBoxLayout()
+        brand.setContentsMargins(10, 8, 0, 24)
+        mark = QLabel()
+        mark.setPixmap(QPixmap(str(resource_path("resources", "app_mark.svg"))).scaled(22, 22, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        title = QLabel("TrainerHub")
+        title.setObjectName("BrandName")
+        brand.addWidget(mark)
+        brand.addWidget(title)
+        brand.addStretch(1)
+        layout.addLayout(brand)
         self._nav_buttons: dict[str, QPushButton] = {}
         for key, label_key in NAV_ITEMS:
             button = QPushButton(tr(label_key))
@@ -37,15 +48,7 @@ class SourceRail(QWidget):
             layout.addWidget(button)
             self._nav_buttons[key] = button
 
-        layout.addSpacing(14)
-        section = QLabel(tr("nav.section.sources"))
-        section.setObjectName("NavSection")
-        layout.addWidget(section)
-
         self._source_buttons: dict[str, QPushButton] = {}
-        self._add_source_button("all", tr("source.all"))
-        for source_id, display in sources.items():
-            self._add_source_button(source_id, display)
 
         layout.addStretch(1)
 

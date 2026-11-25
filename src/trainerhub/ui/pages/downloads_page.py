@@ -10,24 +10,25 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
 
 from ...core.models import CatalogItem
 from ...i18n import tr
-from ..widgets.common import EmptyState, HeaderBar, SegmentedControl, repolish
+from ..widgets.common import ElidedLabel, repolish
 
 ACTIVE_STATES = {"queued", "resolving", "downloading", "extracting", "installing"}
 
 
 class DownloadRow(QFrame):
     cancel_requested = Signal(str)
+    retry_requested = Signal(object)
 
     def __init__(self, job_id: str, item: CatalogItem, source_name: str, parent=None) -> None:
         super().__init__(parent)
         self.job_id = job_id
+        self.item = item
         self.state = "queued"
         self.setObjectName("DownloadRow")
         self.setFixedHeight(56)
@@ -36,7 +37,7 @@ class DownloadRow(QFrame):
         layout.setContentsMargins(18, 0, 12, 0)
         layout.setSpacing(16)
 
-        self.title = QLabel(item.game_name or item.title)
+        self.title = ElidedLabel(item.game_name or item.title, Qt.TextElideMode.ElideRight)
         self.title.setObjectName("RowTitle")
 
         self.progress = QProgressBar()
@@ -60,11 +61,17 @@ class DownloadRow(QFrame):
         self.cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cancel_button.clicked.connect(lambda: self.cancel_requested.emit(self.job_id))
 
+        self.retry_button = QPushButton(tr("action.retry"))
+        self.retry_button.setObjectName("GhostButton")
+        self.retry_button.clicked.connect(lambda: self.retry_requested.emit(self.item))
+        self.retry_button.hide()
+
         layout.addWidget(self.title, 1)
         layout.addWidget(self.progress)
         layout.addWidget(self.percent)
         layout.addWidget(self.status)
         layout.addWidget(self.cancel_button)
+        layout.addWidget(self.retry_button)
 
     def set_state(self, state: str, message: str = "") -> None:
         self.state = state
@@ -79,8 +86,9 @@ class DownloadRow(QFrame):
         if state == "done":
             self.progress.setValue(1000)
             self.percent.setText("100%")
-        if state not in ACTIVE_STATES:
-            self.cancel_button.hide()
+        self.cancel_button.setVisible(state in ACTIVE_STATES)
+        self.retry_button.setVisible(state == "failed")
+        self.status.setToolTip(message)
         if message:
             self.setToolTip(message)
 
@@ -92,58 +100,45 @@ class DownloadRow(QFrame):
 
 
 class DownloadsPage(QWidget):
+    """Temporary active and failed jobs embedded above the installed library."""
+
     cancel_requested = Signal(str)
+    retry_requested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._rows: dict[str, DownloadRow] = {}
-        self._filter = "all"
-
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        self.header = HeaderBar(tr("downloads.title"))
-        self.filters = SegmentedControl(
-            [
-                ("all", tr("downloads.filter.all")),
-                ("active", tr("downloads.filter.active")),
-                ("done", tr("downloads.filter.done")),
-            ]
-        )
-        self.filters.changed.connect(self._on_filter)
-        self.header.add_action(self.filters)
-        layout.addWidget(self.header)
-
-        host = QWidget()
-        self.stack = QStackedLayout(host)
-        self.stack.setContentsMargins(0, 0, 0, 0)
-
+        layout.setContentsMargins(18, 6, 18, 8)
+        layout.setSpacing(4)
+        title = QLabel(tr("downloads.active.title"))
+        title.setObjectName("SectionTitle")
+        layout.addWidget(title)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll.setMaximumHeight(130)
         self.container = QWidget()
         self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(0, 0, 0, 16)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(0)
         self.container_layout.addStretch(1)
         self.scroll.setWidget(self.container)
+        layout.addWidget(self.scroll)
+        self.hide()
 
-        self.empty = EmptyState(tr("downloads.empty.title"), tr("downloads.empty.body"))
-        self.stack.addWidget(self.scroll)
-        self.stack.addWidget(self.empty)
-        self.stack.setCurrentIndex(1)
-
-        layout.addWidget(host, 1)
-
-    # -- jobs -------------------------------------------------------------
     def add_job(self, job_id: str, item: CatalogItem, source_name: str) -> None:
-        if job_id in self._rows:
-            return
-        row = DownloadRow(job_id, item, source_name)
-        row.cancel_requested.connect(self.cancel_requested.emit)
-        self.container_layout.insertWidget(self.container_layout.count() - 1, row)
-        self._rows[job_id] = row
+        row = self._rows.get(job_id)
+        if row is None:
+            row = DownloadRow(job_id, item, source_name)
+            row.cancel_requested.connect(self.cancel_requested.emit)
+            row.retry_requested.connect(self.retry_requested.emit)
+            self.container_layout.insertWidget(self.container_layout.count() - 1, row)
+            self._rows[job_id] = row
+        else:
+            row.item = item
+            row.set_state("queued")
+            row.set_progress(0, 1)
         self._apply_filter()
 
     def update_state(self, job_id: str, state: str, message: str = "") -> None:
@@ -157,24 +152,14 @@ class DownloadsPage(QWidget):
         if row:
             row.set_progress(received, total)
 
-    def _on_filter(self, value: str) -> None:
-        self._filter = value
-        self._apply_filter()
-
-    def _matches(self, row: DownloadRow) -> bool:
-        if self._filter == "active":
-            return row.state in ACTIVE_STATES
-        if self._filter == "done":
-            return row.state == "done"
-        return True
-
     def _apply_filter(self) -> None:
         visible = 0
         for row in self._rows.values():
-            matched = self._matches(row)
+            matched = row.state in ACTIVE_STATES or row.state == "failed"
             row.setVisible(matched)
-            visible += 1 if matched else 0
-        self.stack.setCurrentIndex(0 if visible else 1)
+            visible += int(matched)
+        self.scroll.setFixedHeight(min(visible * 56 + 2, 130))
+        self.setVisible(bool(visible))
 
     def active_count(self) -> int:
         return sum(1 for row in self._rows.values() if row.state in ACTIVE_STATES)

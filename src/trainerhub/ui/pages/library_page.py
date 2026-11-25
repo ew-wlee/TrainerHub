@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -19,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from ...core.models import InstalledItem
 from ...i18n import tr
-from ..widgets.common import EmptyState, HeaderBar
+from ..widgets.common import ElidedLabel, EmptyState, HeaderBar
 
 
 class InstalledRow(QFrame):
@@ -38,7 +37,7 @@ class InstalledRow(QFrame):
         layout.setContentsMargins(18, 0, 12, 0)
         layout.setSpacing(8)
 
-        self.title = QLabel(record.game_name or record.path.rsplit("/", 1)[-1])
+        self.title = ElidedLabel(record.game_name or record.path.rsplit("/", 1)[-1], Qt.TextElideMode.ElideRight)
         self.title.setObjectName("RowTitle")
         layout.addWidget(self.title, 1)
 
@@ -66,38 +65,7 @@ class InstalledRow(QFrame):
         delete_button.clicked.connect(lambda: self.delete_requested.emit(self.record))
         actions_layout.addWidget(delete_button)
 
-        self._effect = QGraphicsOpacityEffect(self.actions)
-        self._effect.setOpacity(0.0)
-        self.actions.setGraphicsEffect(self._effect)
         layout.addWidget(self.actions)
-
-        for button in self.actions.findChildren(QPushButton):
-            button.installEventFilter(self)
-
-    def _show_actions(self, visible: bool) -> None:
-        self._effect.setOpacity(1.0 if visible else 0.0)
-
-    def enterEvent(self, event) -> None:  # noqa: N802
-        self._show_actions(True)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event) -> None:  # noqa: N802
-        if not self.actions.underMouse() and not self.actions.hasFocus():
-            self._show_actions(False)
-        super().leaveEvent(event)
-
-    def eventFilter(self, watched, event) -> bool:  # noqa: N802
-        if watched.parent() is self.actions:
-            if event.type() == QEvent.Type.FocusIn:
-                self._show_actions(True)
-            elif event.type() == QEvent.Type.FocusOut:
-                QTimer.singleShot(0, self._hide_if_unfocused)
-        return super().eventFilter(watched, event)
-
-    def _hide_if_unfocused(self) -> None:
-        if not self.actions.hasFocus() and not self.underMouse():
-            self._show_actions(False)
-
 
 class LibraryPage(QWidget):
     import_requested = Signal()
@@ -126,6 +94,11 @@ class LibraryPage(QWidget):
         self.header.add_action(self.update_button)
         self.header.add_action(self.import_button)
         layout.addWidget(self.header)
+        self._layout = layout
+        self.section_title = QLabel(tr("library.added"))
+        self.section_title.setObjectName("SectionTitle")
+        self.section_title.setContentsMargins(24, 12, 24, 6)
+        layout.addWidget(self.section_title)
 
         host = QWidget()
         self.stack = QStackedLayout(host)
@@ -147,6 +120,9 @@ class LibraryPage(QWidget):
         self.stack.addWidget(self.scroll)
         self.stack.addWidget(self.empty)
         layout.addWidget(host, 1)
+
+    def add_downloads(self, downloads: QWidget) -> None:
+        self._layout.insertWidget(1, downloads)
 
     def set_records(self, records: list[InstalledItem], updates: dict[tuple[str, str], str] | None = None) -> None:
         while self.container_layout.count() > 1:

@@ -48,7 +48,7 @@ class TrainerHubApp:
         self.app.setApplicationDisplayName(APP_NAME)
         self.app.setApplicationVersion(VERSION)
         self.app.setOrganizationName(APP_ID)
-        self.app.setWindowIcon(QIcon(str(resource_path("resources", "app_icon.svg"))))
+        self.app.setWindowIcon(QIcon(str(resource_path("resources", "app_mark.svg"))))
 
         self.config = Config.load()
         set_language(self.config.language)
