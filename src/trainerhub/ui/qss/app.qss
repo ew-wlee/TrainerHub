@@ -238,6 +238,11 @@ QPushButton#SegmentButton[active="true"] {
     font-weight: 600;
 }
 
+#DiscoveryToolbar {
+    background-color: @surface;
+    border-bottom: 1px solid @line;
+}
+
 /* ---------- headings ---------- */
 
 #PageTitle {

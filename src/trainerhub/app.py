@@ -37,6 +37,7 @@ def configure_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class TrainerHubApp:
@@ -67,6 +68,7 @@ class TrainerHubApp:
         self.detail_worker: DetailWorker | None = None
         self.download_worker: DownloadWorker | None = None
         self.window: MainWindow | None = None
+        self.app.aboutToQuit.connect(self._shutdown_workers)
 
     # -- lifecycle --------------------------------------------------------
     def run(self) -> int:
@@ -118,12 +120,14 @@ class TrainerHubApp:
         self.window.show()
 
     def _shutdown_workers(self) -> None:
+        if self.window is not None:
+            self.window.shutdown_discovery()
         for worker in (self.detail_worker, self.download_worker):
-            if worker is None:
-                continue
-            worker.stop()
-            if worker.isRunning():
-                worker.wait(2500)
+            if worker is not None:
+                worker.stop()
+        for worker in (self.detail_worker, self.download_worker):
+            if worker is not None and worker.isRunning():
+                worker.wait()
 
     def _rebuild(self) -> None:
         """Recreate workers and window after a structural setting change."""

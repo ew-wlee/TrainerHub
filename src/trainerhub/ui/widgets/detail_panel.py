@@ -21,6 +21,7 @@ class DetailPanel(QWidget):
     open_page_requested = Signal(object)
     open_folder_requested = Signal(object)
     close_requested = Signal()
+    exclude_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -28,6 +29,8 @@ class DetailPanel(QWidget):
         self.setFixedWidth(280)
         self._item: CatalogItem | None = None
         self._installed: InstalledItem | None = None
+        self._direct = False
+        self._appid = ""
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(18, 14, 18, 16)
@@ -66,6 +69,15 @@ class DetailPanel(QWidget):
         self.secondary_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.secondary_button.clicked.connect(self._on_secondary)
 
+        self.match_note = QLabel("")
+        self.match_note.setObjectName("DetailNote")
+        self.match_note.setWordWrap(True)
+        self.exclude_button = QPushButton(tr("discovery.exclude"))
+        self.exclude_button.setObjectName("LinkButton")
+        self.exclude_button.clicked.connect(lambda: self.exclude_requested.emit(self._appid))
+        self.match_note.hide()
+        self.exclude_button.hide()
+
         outer.addLayout(head)
         outer.addSpacing(4)
         outer.addWidget(self.title)
@@ -76,6 +88,9 @@ class DetailPanel(QWidget):
         outer.addSpacing(14)
         outer.addWidget(self.primary_button)
         outer.addWidget(self.secondary_button, 0, Qt.AlignmentFlag.AlignLeft)
+        outer.addSpacing(18)
+        outer.addWidget(self.match_note)
+        outer.addWidget(self.exclude_button, 0, Qt.AlignmentFlag.AlignLeft)
         outer.addStretch(1)
 
         self._reset()
@@ -104,6 +119,10 @@ class DetailPanel(QWidget):
     ) -> None:
         self._item = item
         self._installed = installed
+        self._direct = source_supports_direct
+        self._appid = ""
+        self.match_note.hide()
+        self.exclude_button.hide()
 
         self.title.setText(item.game_name or item.title)
         self.source.setText(f"{source_name} · {tr('source.live')}" if remote else source_name)
@@ -131,6 +150,20 @@ class DetailPanel(QWidget):
         # Only show the browser action when the primary action is not already it.
         self.secondary_button.setVisible(installed is not None or (source_supports_direct and not remote))
 
+    def show_match(self, entry) -> None:
+        self._appid = entry.game.appid
+        self.title.setText(entry.game.name)
+        confidence = tr(f"discovery.confidence.{entry.confidence}")
+        self.match_note.setText(tr("discovery.match", confidence=confidence, reason=entry.reason))
+        self.match_note.show()
+        self.exclude_button.show()
+        self._direct = entry.action == "download"
+        if entry.action == "external" and self._installed is None:
+            self.primary_button.setText(tr("action.open_page"))
+        if entry.state in {"queued", "resolving", "downloading", "extracting", "installing"}:
+            self.primary_button.setText(tr(f"state.{entry.state}"))
+            self.primary_button.setEnabled(False)
+
     def update_installed(self, installed: InstalledItem | None) -> None:
         if self._item is None:
             return
@@ -145,7 +178,7 @@ class DetailPanel(QWidget):
             return
         if self._installed is not None:
             self.open_folder_requested.emit(self._installed)
-        elif not self._item.supports_direct_download:
+        elif not self._direct:
             self.open_page_requested.emit(self._item)
         else:
             self.download_requested.emit(self._item)

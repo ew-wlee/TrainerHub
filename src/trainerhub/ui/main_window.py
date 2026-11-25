@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from ..core.library import LibraryService, open_in_file_manager
 from ..core.models import CatalogItem, InstalledItem
 from ..core.paths import resource_path
 from ..core.search import SearchEngine
+from ..core.source_policy import select_preferred
 from ..core.textutil import normalize
 from ..core.updater import UpdateService
 from ..i18n import tr
@@ -35,6 +37,8 @@ from ..workers.detail_worker import DetailWorker
 from ..workers.download_worker import DownloadWorker
 from ..workers.search_worker import SearchWorker
 from ..workers.sync_worker import SyncWorker
+from .dialogs.scanned_games_dialog import ScannedGamesDialog
+from .discovery_controller import ACTIVE_STATES, DiscoveryController
 from .pages.discover_page import DiscoverPage
 from .pages.downloads_page import DownloadsPage
 from .pages.library_page import LibraryPage
@@ -78,8 +82,17 @@ class MainWindow(QMainWindow):
         self._detail_pending: set[tuple[str, str]] = set()
 
         self._remote_items: dict[tuple[str, str], CatalogItem] = {}
-        self._remote_cache: dict[str, list[CatalogItem]] = {}
+        self._remote_cache: dict[tuple[str, str], tuple[float, list[CatalogItem]]] = {}
         self._search_workers: set[SearchWorker] = set()
+        self._search_generation = 0
+        self._remote_state = "idle"
+        self._remote_pending: tuple[int, str, str] | None = None
+        self._closing = False
+        self._was_searching = False
+        self._plan_current_key: tuple[str, str] | None = None
+        self._active_jobs: set[str] = set()
+        self._external_jobs: set[str] = set()
+        self.discovery_controller = DiscoveryController(config, library.db, self)
 
         self.sync_worker: SyncWorker | None = workers.get("sync")
         self.detail_worker: DetailWorker | None = workers.get("detail")
@@ -93,6 +106,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._wire()
         self._load_items(initial=True)
+        QTimer.singleShot(0, self.discovery_controller.initialize)
 
     # -- construction -----------------------------------------------------
     def _source_names(self) -> dict[str, str]:
@@ -157,6 +171,11 @@ class MainWindow(QMainWindow):
         self.sync_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sync_button.setToolTip(tr("action.sync"))
 
+        self.remote_retry_button = QPushButton(tr("search.remote.retry"))
+        self.remote_retry_button.setObjectName("LinkButton")
+        self.remote_retry_button.clicked.connect(self._retry_remote_search)
+        self.remote_retry_button.hide()
+
         self.settings_button = QPushButton("⚙")
         self.settings_button.setObjectName("IconButton")
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -167,6 +186,7 @@ class MainWindow(QMainWindow):
         top_layout.addSpacing(8)
         top_layout.addWidget(self.search_box)
         top_layout.addWidget(self.status_label)
+        top_layout.addWidget(self.remote_retry_button)
         top_layout.addStretch(1)
         top_layout.addWidget(self.sync_button)
         top_layout.addWidget(self.settings_button)
@@ -211,6 +231,19 @@ class MainWindow(QMainWindow):
         self.discover.open_folder_requested.connect(self._open_folder)
         self.discover.sync_requested.connect(self.start_sync)
         self.discover.closed.connect(self._on_inspector_closed)
+        controller = self.discovery_controller
+        self.discover.scan_requested.connect(self._scan_steam)
+        self.discover.retry_remote_requested.connect(self._retry_remote_search)
+        self.discover.show_all_requested.connect(self._show_all_search)
+        self.discover.cancel_scan_requested.connect(controller.cancel)
+        self.discover.manage_requested.connect(self._manage_scanned_games)
+        self.discover.batch_requested.connect(self._download_selected)
+        self.discover.checked_changed.connect(controller.set_selected)
+        self.discover.select_all_requested.connect(lambda selected: controller.select_all(selected, source_filter=self.source_filter))
+        self.discover.detail.exclude_requested.connect(lambda appid: controller.set_excluded(appid, True))
+        controller.plan_changed.connect(self._render_plan)
+        controller.state_changed.connect(self._on_discovery_state)
+        controller.failed.connect(lambda message: self.toast.show_message(message[:160], 3600))
 
         self.downloads.cancel_requested.connect(self._cancel_download)
 
@@ -220,9 +253,13 @@ class MainWindow(QMainWindow):
         self.library_page.run_requested.connect(self._run_trainer)
         self.library_page.delete_requested.connect(self._delete_record)
 
-        self.settings.language_changed.connect(self.language_change_requested.emit)
+        self.settings.language_changed.connect(self._on_language_changed)
         self.settings.library_changed.connect(self._on_library_changed)
         self.settings.sources_changed.connect(self._on_sources_changed)
+        self.settings.discovery_changed.connect(controller.set_enabled)
+        self.settings.discovery_paths_changed.connect(controller.cancel)
+        self.settings.discovery_clear_requested.connect(self._clear_discovery)
+        self.settings.discovery_scan_requested.connect(self._scan_steam)
 
         if self.detail_worker is not None:
             self.detail_worker.detail_ready.connect(self._on_detail_ready)
@@ -248,7 +285,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText(text)
         self.status_label.setToolTip(text)
         if timeout_ms:
-            QTimer.singleShot(timeout_ms, lambda: self.status_label.setText(""))
+            QTimer.singleShot(timeout_ms, lambda: self.status_label.setText("") if self.status_label.text() == text else None)
 
     # -- items & search ---------------------------------------------------
     def _load_items(self, *, initial: bool = False) -> None:
@@ -256,8 +293,8 @@ class MainWindow(QMainWindow):
         self.search.rebuild(self.items)
         self._run_search()
         self._refresh_library()
-        if initial and not self.items:
-            self.discover.set_empty_mode("empty")
+        if not initial:
+            self.discovery_controller.rebuild_plan()
 
     def _db_items(self) -> list[CatalogItem]:
         return self.library.db.all_items()
@@ -265,53 +302,68 @@ class MainWindow(QMainWindow):
     def _installed_keys(self) -> set[tuple[str, str]]:
         return {record.key for record in self.library.db.installed_all()}
 
+    def _invalidate_search(self) -> None:
+        self._search_generation += 1
+        self._remote_pending = None
+        self._remote_items.clear()
+        self._remote_state = "idle"
+        self.remote_retry_button.hide()
+        if not self.discovery_controller.busy:
+            self._set_status("")
+        for worker in self._search_workers:
+            worker.stop()
+
     def _on_source_filter(self, source_id: str) -> None:
         self.source_filter = source_id
         self.config.set("ui.last_source", source_id)
+        self._invalidate_search()
         self._switch_page("discover")
-        self._run_search()
         self._remote_timer.start()
 
-    def _on_search_text(self, _text: str) -> None:
-        self._search_timer.start()
-        self._remote_timer.start()
+    def _on_search_text(self, text: str) -> None:
+        searching = bool(text.strip())
+        if searching and not self._was_searching:
+            self._plan_current_key = self._current.key if self._current else None
+        self._was_searching = searching
+        self._invalidate_search()
+        self._close_inspector()
+        if not searching:
+            self._search_timer.stop()
+            self._remote_timer.stop()
+            self._run_search()
+        else:
+            self._search_timer.start()
+            self._remote_timer.start()
 
     def _run_search(self) -> None:
         query = self.search_box.text().strip()
-        hits = self.search.query(query, source_id=self.source_filter, limit=2000)
-        if query and self._remote_items:
-            # A live result exists, so keep only confident local matches instead
-            # of padding the list with fuzzy near-misses.
-            strong = [hit for hit in hits if hit.score >= 380]
-            if strong:
-                hits = strong
-            elif len(hits) > 0:
-                hits = []
-        local_items = [hit.item for hit in hits]
-        local_keys = {item.key for item in local_items}
-
-        remote_items: list[CatalogItem] = []
-        if query and self.source_filter in ("all", "fling"):
-            needle = normalize(query)
-            local_names = {normalize(item.game_name) for item in local_items}
-            local_names |= {normalize(item.game_alias) for item in local_items if item.game_alias}
-            for key, item in self._remote_items.items():
-                if key in local_keys or normalize(item.game_name) in local_names:
-                    continue
-                haystack = normalize(f"{item.game_name} {item.title}")
-                if needle and needle not in haystack:
-                    continue
-                remote_items.append(item)
-
-        items = local_items + remote_items
+        if self._closing:
+            return
+        if not query:
+            self.remote_retry_button.hide()
+            self._render_plan(self.discovery_controller.plan)
+            if self._plan_current_key is not None:
+                row = self.discover.model.row_of(self._plan_current_key)
+                if row >= 0:
+                    self.discover.select_row(row)
+                self._plan_current_key = None
+            return
+        hits = self.search.query(query, source_id="all", limit=2000)
+        if self._remote_items:
+            hits = [hit for hit in hits if hit.score >= 380]
+        local_items = [hit.item for hit in hits if self.config.source_enabled(hit.item.source_id) or hit.item.source_id == "local"]
+        merged = local_items + list(self._remote_items.values())
+        items = select_preferred(merged, remote_state=self._remote_state, source_filter=self.source_filter)
         self.discover.set_remote_keys(set(self._remote_items.keys()))
         self.discover.set_installed_keys(self._installed_keys())
 
+        self.remote_retry_button.setVisible(bool(items) and self._remote_state == "failed" and self._remote_allowed(query))
         if not items:
-            if query:
-                self.discover.set_empty_mode("noresult", query)
-            else:
-                self.discover.set_empty_mode("empty")
+            preferred_suppressed = (self.source_filter == "xiaoxing"
+                                    and any(item.source_id == "xiaoxing" for item in merged)
+                                    and any(item.source_id == "fling" for item in merged))
+            self.discover.set_empty_mode("noresult", query, remote_state=self._remote_state,
+                                         preferred_suppressed=preferred_suppressed)
             self._current = None
             return
 
@@ -325,53 +377,148 @@ class MainWindow(QMainWindow):
             self.discover.hide_detail()
 
     # -- live search ------------------------------------------------------
+    def _retry_remote_search(self) -> None:
+        query = self.search_box.text().strip()
+        if not self._remote_allowed(query):
+            return
+        self._search_timer.stop()
+        self._remote_timer.stop()
+        self._remote_cache.pop((normalize(query), self.source_filter), None)
+        self._invalidate_search()
+        self._start_remote_search()
+
+    def _show_all_search(self) -> None:
+        known_remote = dict(self._remote_items)
+        self.rail.set_active_source("all")
+        self._on_source_filter("all")
+        if known_remote:
+            self._remote_items = known_remote
+            self._remote_state = "ready"
+            self._run_search()
+
+    def _remote_allowed(self, query: str) -> bool:
+        return (not self._closing and len(query) >= 2 and self.source_filter in {"all", "fling", "xiaoxing"}
+                and self.config.source_enabled("fling") and "fling" in self.sources)
+
+    def _remote_terms(self, query: str) -> list[str]:
+        terms = [query]
+        for hit in self.search.query(query, source_id="all", fuzzy=False, limit=8):
+            if hit.score < 700 or not self.config.source_enabled(hit.item.source_id):
+                continue
+            for name in (hit.item.game_alias, hit.item.game_name):
+                name = name.strip()
+                if len(name) >= 2 and name.isascii() and any(c.isalpha() for c in name) and name.casefold() not in {term.casefold() for term in terms}:
+                    terms.append(name)
+            if len(terms) >= 3:
+                break
+        return terms[:3]
+
     def _start_remote_search(self) -> None:
         query = self.search_box.text().strip()
-        allowed = len(query) >= 2 and self.source_filter in ("all", "fling")
-        if not allowed:
-            if self._remote_items:
-                self._remote_items.clear()
-                self._run_search()
+        if not self._remote_allowed(query):
             return
-
-        cached = self._remote_cache.get(query.lower())
-        if cached is not None:
-            self._remote_items = {item.key: item for item in cached}
+        key = (normalize(query), self.source_filter)
+        cached = self._remote_cache.get(key)
+        if cached is not None and time.monotonic() - cached[0] < 120:
+            self._remote_items = {item.key: item for item in cached[1]}
+            self._remote_state = "ready"
             self._run_search()
             return
+        self._remote_cache.pop(key, None)
+        context = (self._search_generation, query, self.source_filter)
+        if any((worker.generation, worker.term, worker.source_filter) == context for worker in self._search_workers):
+            return
+        self._remote_pending = context
+        self._remote_state = "loading"
+        self._run_search()
+        self._launch_remote_pending()
 
-        for worker in list(self._search_workers):
-            worker.requestInterruption()
-
-        worker = SearchWorker(query, self)
-        worker.results.connect(self._on_remote_results)
-        worker.failed.connect(self._on_remote_failed)
+    def _launch_remote_pending(self) -> None:
+        if self._closing or self._remote_pending is None or len(self._search_workers) >= 2:
+            return
+        generation, query, source_filter = self._remote_pending
+        self._remote_pending = None
+        if not self._valid_search_context(generation, query, source_filter):
+            return
+        worker = SearchWorker(query, self, generation=generation, source_filter=source_filter,
+                              terms=self._remote_terms(query))
+        worker.context_results.connect(self._on_remote_results)
+        worker.context_failed.connect(self._on_remote_failed)
         worker.finished.connect(lambda w=worker: self._retire_worker(w))
         self._search_workers.add(worker)
         worker.start()
         self._set_status(tr("search.remote.loading"))
 
+    def _valid_search_context(self, generation: int, term: str, source_filter: str) -> bool:
+        return (generation == self._search_generation and term == self.search_box.text().strip()
+                and source_filter == self.source_filter and self._remote_allowed(term))
+
     def _retire_worker(self, worker: SearchWorker) -> None:
         self._search_workers.discard(worker)
         worker.deleteLater()
+        self._launch_remote_pending()
 
-    def _on_remote_results(self, term: str, items: list[CatalogItem]) -> None:
-        if term != self.search_box.text().strip():
+    def _on_remote_results(self, generation: int, term: str, source_filter: str, items: list[CatalogItem]) -> None:
+        if not self._valid_search_context(generation, term, source_filter):
             return
-        self._remote_cache[term.lower()] = items
+        if items:
+            self._remote_cache[(normalize(term), source_filter)] = (time.monotonic(), items)
         if len(self._remote_cache) > 20:
-            oldest = next(iter(self._remote_cache))
-            self._remote_cache.pop(oldest, None)
-        self._remote_items = {item.key: item for item in items}
+            self._remote_cache.pop(next(iter(self._remote_cache)), None)
+        self._remote_items = {item.key: item for item in items if self.config.source_enabled(item.source_id)}
+        self._remote_state = "ready"
         self._set_status("")
         self._run_search()
 
-    def _on_remote_failed(self, term: str, _message: str) -> None:
-        if term != self.search_box.text().strip():
+    def _on_remote_failed(self, generation: int, term: str, source_filter: str, _message: str) -> None:
+        if not self._valid_search_context(generation, term, source_filter):
             return
         self._remote_items.clear()
+        self._remote_state = "failed"
         self._set_status(tr("search.remote.offline"), 4000)
         self._run_search()
+
+    # -- discovery --------------------------------------------------------
+    def _render_plan(self, plan) -> None:
+        if self._closing or self.search_box.text().strip():
+            return
+        self.discover.set_plan(plan, has_games=self.discovery_controller.enabled and bool(self.discovery_controller.games),
+                               source_filter=self.source_filter)
+        if self._current is not None and not self.discover.detail.isHidden():
+            entry = self.discovery_controller.entry_for(self._current.key)
+            if entry is not None:
+                self._on_selection(entry.item)
+
+    def _on_discovery_state(self, state: str) -> None:
+        self.discover.set_busy(state)
+        self._set_status(tr(f"discovery.{state}") if state in {"scanning", "planning"} else "")
+
+    def _scan_steam(self) -> None:
+        self.settings.discovery_check.blockSignals(True)
+        self.settings.discovery_check.setChecked(True)
+        self.settings.discovery_check.blockSignals(False)
+        self.discovery_controller.scan()
+        self._render_plan(self.discovery_controller.plan)
+
+    def _clear_discovery(self) -> None:
+        self.discovery_controller.clear()
+        for checkbox in (self.settings.discovery_check, self.settings.scan_start_check):
+            checkbox.blockSignals(True)
+            checkbox.setChecked(False)
+            checkbox.blockSignals(False)
+        self.settings.steam_paths_edit.clear()
+
+    def _manage_scanned_games(self) -> None:
+        controller = self.discovery_controller
+        dialog = ScannedGamesDialog(controller.games, controller.excluded, controller.plan.unmatched,
+                                    controller.report, self)
+        dialog.exclusion_changed.connect(controller.set_excluded)
+        dialog.search_requested.connect(lambda name: (dialog.accept(), self.search_box.setText(name), self.search_box.setFocus()))
+        dialog.exec()
+
+    def _download_selected(self) -> None:
+        for item in self.discovery_controller.selected_items(source_filter=self.source_filter):
+            self._enqueue_download(item, switch_page=False)
 
     # -- detail -----------------------------------------------------------
     def _on_selection(self, item: CatalogItem) -> None:
@@ -382,6 +529,9 @@ class MainWindow(QMainWindow):
         direct = source.supports_direct_download if source else item.supports_direct_download
         remote = item.key in self._remote_items
         self.discover.show_detail(item, installed, source_name, direct, remote=remote)
+        entry = self.discovery_controller.entry_for(item.key) if not self.search_box.text().strip() else None
+        if entry is not None:
+            self.discover.detail.show_match(entry)
 
         if (
             not item.detail_loaded
@@ -403,6 +553,7 @@ class MainWindow(QMainWindow):
         if item.key in self._remote_items:
             self._remote_items[item.key] = item
         self.search.rebuild(self.items)
+        self.discovery_controller.replace_item(item)
         self.discover.replace_item(item)
         if self._current is not None and self._current.key == item.key:
             self._on_selection(item)
@@ -456,8 +607,21 @@ class MainWindow(QMainWindow):
             self.toast.show_message(tr("toast.synced", count=total))
 
     # -- downloads --------------------------------------------------------
-    def _enqueue_download(self, item: CatalogItem) -> None:
+    def _enqueue_download(self, item: CatalogItem, *, switch_page: bool = True) -> None:
+        if self._closing or not self.config.source_enabled(item.source_id):
+            return
+        entry = self.discovery_controller.entry_for(item.key)
+        source = self.sources.get(item.source_id)
+        direct = source.supports_direct_download if source is not None else item.supports_direct_download
+        if (entry is not None and entry.action == "external") or not direct:
+            self._open_page(item)
+            return
         if self.download_worker is None:
+            return
+        job_id = f"{item.source_id}:{item.remote_id}"
+        if job_id in self._active_jobs:
+            return
+        if entry is not None and entry.state in {"installed", "done"}:
             return
         if self.library.is_same_version_installed(item):
             record = self.library.installed(item)
@@ -474,11 +638,14 @@ class MainWindow(QMainWindow):
             self.search.rebuild(self.items)
             self.discover.set_remote_keys(set(self._remote_items.keys()))
 
-        job_id = f"{item.source_id}:{item.remote_id}"
+        self._active_jobs.add(job_id)
+        self._external_jobs.discard(job_id)
+        self.discovery_controller.update_job(item.key, "queued")
         self.downloads.add_job(job_id, item, tr(SOURCE_LABEL_KEYS.get(item.source_id, item.source_id)))
         self.download_worker.enqueue(item)
         self.toast.show_message(tr("toast.download.queued"), 1800)
-        self._switch_page("downloads")
+        if switch_page:
+            self._switch_page("downloads")
 
     def _cancel_download(self, job_id: str) -> None:
         if self.download_worker is not None:
@@ -486,8 +653,20 @@ class MainWindow(QMainWindow):
 
     def _on_job_state(self, job_id: str, state: str, message: str) -> None:
         self.downloads.update_state(job_id, state, message)
+        if state in ACTIVE_STATES:
+            self._active_jobs.add(job_id)
+        else:
+            self._active_jobs.discard(job_id)
+        key = tuple(job_id.split(":", 1))
+        if len(key) == 2:
+            if message == "external" or job_id in self._external_jobs:
+                self.discovery_controller.external(key)
+            else:
+                self.discovery_controller.update_job(key, state)
 
     def _on_job_done(self, record: InstalledItem) -> None:
+        self._active_jobs.discard(f"{record.source_id}:{record.remote_id}")
+        self.discovery_controller.update_job(record.key, "done")
         self.toast.show_message(tr("toast.download.done", name=record.game_name))
         self._refresh_library()
         if self._current is not None and self._current.key == record.key:
@@ -495,9 +674,14 @@ class MainWindow(QMainWindow):
         self.discover.set_installed_keys(self._installed_keys())
 
     def _on_job_failed(self, job_id: str, reason: str) -> None:
-        self.toast.show_message(tr("toast.download.failed", reason=reason.splitlines()[0][:90]), 3600)
+        self._active_jobs.discard(job_id)
+        self.discovery_controller.update_job(tuple(job_id.split(":", 1)), "failed")
+        self.toast.show_message(tr("toast.download.failed", reason=(reason.splitlines() or [tr("state.failed")])[0][:90]), 3600)
 
     def _on_job_external(self, job_id: str, url: str) -> None:
+        self._active_jobs.discard(job_id)
+        self._external_jobs.add(job_id)
+        self.discovery_controller.external(tuple(job_id.split(":", 1)))
         if url:
             QDesktopServices.openUrl(QUrl(url))
         self.toast.show_message(tr("error.external"), 3000)
@@ -558,6 +742,7 @@ class MainWindow(QMainWindow):
         if box.exec() != QMessageBox.StandardButton.Yes:
             return
         self.library.delete(record)
+        self.discovery_controller.forget_job(record.key)
         self._refresh_library()
         if self._current is not None and self._current.key == record.key:
             self._on_selection(self._current)
@@ -577,9 +762,20 @@ class MainWindow(QMainWindow):
         self.library.root = Path(folder)
         self._refresh_library()
 
+    def _on_language_changed(self, language: str) -> None:
+        self.cleanup()
+        self.language_change_requested.emit(language)
+
     def _on_sources_changed(self) -> None:
+        self._invalidate_search()
+        self._remote_cache.clear()
+        self.discovery_controller.cancel()
         if self.on_rebuild is not None:
+            self.cleanup()
             self.on_rebuild()
+        else:
+            self._run_search()
+            self.discovery_controller.rebuild_plan()
 
     def _open_page(self, item: CatalogItem) -> None:
         if item.page_url:
@@ -588,22 +784,36 @@ class MainWindow(QMainWindow):
     def _open_folder(self, record: InstalledItem) -> None:
         open_in_file_manager(Path(record.path))
 
-    def closeEvent(self, event) -> None:  # noqa: N802
-        try:
-            self.config.set("ui.window_geometry", bytes(self.saveGeometry()).hex(), save=False)
-            self.config.save()
-        except Exception:  # noqa: BLE001
-            pass
+    def shutdown_discovery(self) -> None:
+        self.cleanup()
+
+    def cleanup(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        self._search_timer.stop()
+        self._remote_timer.stop()
+        self._invalidate_search()
+        self._remote_cache.clear()
+        self.discovery_controller.cleanup()
         for worker in (self.sync_worker, self.detail_worker, self.download_worker):
             if worker is None:
                 continue
             if hasattr(worker, "stop"):
                 worker.stop()
             if worker.isRunning():
-                worker.wait(3000)
+                worker.wait()
         for worker in list(self._search_workers):
             worker.stop()
-            worker.wait(1500)
+            worker.wait()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        try:
+            self.config.set("ui.window_geometry", bytes(self.saveGeometry()).hex(), save=False)
+            self.config.save()
+        except Exception:  # noqa: BLE001
+            pass
+        self.cleanup()
         super().closeEvent(event)
 
 

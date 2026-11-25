@@ -2,6 +2,9 @@ name: build-windows
 
 on:
   push:
+    branches:
+      - "v0.3.0"
+      - "main"
     tags:
       - "v*"
   workflow_dispatch:
@@ -24,8 +27,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Check code
+        run: uv run ruff check src tests
+
       - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: uv run pytest -q
+
+      - name: Verify real desktop search
+        timeout-minutes: 3
+        env:
+          QT_QPA_PLATFORM: offscreen
+          TRAINERHUB_LIVE_SEARCH_TEST: "1"
+        run: uv run pytest tests/test_live_search.py -q
 
       - name: Build TrainerHub.exe
         run: uv run pyinstaller packaging/trainerhub.spec --noconfirm --distpath dist --workpath build

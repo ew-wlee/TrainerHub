@@ -4,7 +4,7 @@
 
 ```
 ui/         PySide6 视图与交互（无业务逻辑）
-workers/    QThread 桥接：同步、详情、下载
+workers/    QThread 桥接：同步、详情、下载、联网搜索、Steam 发现
 core/       纯 Python 业务层（可单测、可被 CLI 复用）
 ```
 
@@ -53,6 +53,16 @@ UI 事件
 命中数不足 8 条时补一轮 `rapidfuzz.WRatio`（阈值 62）兜底拼写错误。
 排序键：`(score, updated_at)`。
 
+## Steam 发现与联网来源裁决
+
+- `core/steam_scan.py`：受限 VDF 解析，只读多库安装清单，取消不提交半成品。
+- `core/game_matching.py`：预计算游戏名／可靠别名，保护续作、版本及 DLC 身份；搜索排序分数不等于推荐置信度。
+- `core/source_policy.py`：先游戏级合并与 FLiNG 优先，再应用来源筛选；网络失败不冒充没有 FLiNG。
+- `core/recommendation.py`：本地快照和目录生成高、中置信计划，不联网、不执行；已有项不重复选择。
+- `workers/discovery_worker.py`：在后台扫描与生成计划；`ui/discovery_controller.py` 接收有效代次后事务提交快照，维护选择与任务状态。
+- `workers/search_worker.py`：有限英文别名补搜，返回查询代次与来源；旧回包不能覆盖当前查询。外站链接和响应类型在 `core/remote_search.py` 校验。
+- 隐私、扫描诊断与推荐依据在设置／次级详情；首屏只显示必要信息。清除或关闭先取消并失效代次，不删除修改器库。
+
 ## 下载管道状态机
 
 ```
@@ -79,7 +89,7 @@ queued → resolving → downloading → extracting → installing → done
 
 ## 存储
 
-- **SQLite**（`catalog` / `installed` / `meta`）：索引与本地库状态，WAL 模式。
+- **SQLite**（`catalog` / `installed` / `meta` / `steam_games` / `steam_preferences`）：目录、修改器库、Steam 快照与排除偏好，WAL 模式。发现表独立建表，不改变旧主键；只替换成功扫描的库，不把不可访问外置库当作卸载。
 - **JSON 配置**：主题、语言、库目录、源开关、下载并发等，原子写入（临时文件 + `os.replace`）。
 - **manifest.json**：随每个已安装版本落盘，脱离程序也能读懂来源。
 

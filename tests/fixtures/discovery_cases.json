@@ -1,0 +1,42 @@
+{
+  "matching": [
+    {"id": "exact", "steam": "Hades", "catalog": [{"name": "Hades"}], "confidence": "high"},
+    {"id": "bilingual", "steam": "Black Myth: Wukong", "catalog": [{"name": "黑神话：悟空", "alias": "Black Myth: Wukong"}], "confidence": "high"},
+    {"id": "punctuation", "steam": "ACE COMBAT 7: Skies Unknown", "catalog": [{"name": "Ace Combat 7 - Skies Unknown"}], "confidence": "high"},
+    {"id": "fullwidth", "steam": "Ｈａｄｅｓ ２", "catalog": [{"name": "Hades 2"}], "confidence": "high"},
+    {"id": "trademark", "steam": "DOOM® Eternal™", "catalog": [{"name": "DOOM Eternal"}], "confidence": "high"},
+    {"id": "roman-terminal", "steam": "Final Fantasy VII", "catalog": [{"name": "Final Fantasy 7"}], "confidence": "medium"},
+    {"id": "roman-subtitle", "steam": "Dark Souls III: The Fire Fades", "catalog": [{"name": "Dark Souls 3: The Fire Fades"}], "confidence": "medium"},
+    {"id": "typo", "steam": "Cyberpunk 2077", "catalog": [{"name": "Cyberpnk 2077"}], "confidence": "medium"},
+    {"id": "sequel", "steam": "Hades", "catalog": [{"name": "Hades 2"}], "confidence": null},
+    {"id": "wrong-sequel", "steam": "Resident Evil 4", "catalog": [{"name": "Resident Evil 5"}], "confidence": null},
+    {"id": "sequel-alias-conflict", "steam": "Hades", "catalog": [{"name": "Hades 2", "alias": "Hades"}], "confidence": null},
+    {"id": "edition", "steam": "Control", "catalog": [{"name": "Control Ultimate Edition"}], "confidence": null},
+    {"id": "remake", "steam": "Resident Evil 4", "catalog": [{"name": "Resident Evil 4 Remake"}], "confidence": null},
+    {"id": "dlc", "steam": "Elden Ring", "catalog": [{"name": "Elden Ring DLC"}], "confidence": null},
+    {"id": "edition-alias-conflict", "steam": "Control", "catalog": [{"name": "Control Ultimate Edition", "alias": "Control"}], "confidence": null},
+    {"id": "same-edition", "steam": "Control Ultimate Edition", "catalog": [{"name": "Control Ultimate Edition"}], "confidence": "high"},
+    {"id": "pinyin-not-recommendation", "steam": "Heishenhua Wukong", "catalog": [{"name": "黑神话悟空"}], "confidence": null},
+    {"id": "initials-not-recommendation", "steam": "hshwk", "catalog": [{"name": "黑神话悟空"}], "confidence": null},
+    {"id": "ambiguous-fuzzy", "steam": "Cyberpunk 2077", "catalog": [{"name": "Cyberpnk 2077"}, {"name": "Cyberpank 2077"}], "confidence": null},
+    {"id": "short-base-alias", "steam": "Monster Hunter", "catalog": [{"name": "Monster Hunter World", "alias": "Monster Hunter"}], "confidence": null},
+    {"id": "roman-not-prefix", "steam": "V Rising", "catalog": [{"name": "5 Rising"}], "confidence": null},
+    {"id": "roman-not-midword", "steam": "Civilization", "catalog": [{"name": "C4lization"}], "confidence": null},
+    {"id": "digit-boundary", "steam": "Game 1 2", "catalog": [{"name": "Game 12"}], "confidence": null},
+    {"id": "different-game", "steam": "Hades", "catalog": [{"name": "Half Life"}], "confidence": null},
+    {"id": "empty", "steam": "", "catalog": [{"name": "Hades"}], "confidence": null}
+  ],
+  "manifest_states": [
+    {"flags": 4, "installed": true},
+    {"flags": 68, "installed": true},
+    {"flags": 0, "installed": false},
+    {"flags": 1, "installed": false},
+    {"flags": 6, "installed": false},
+    {"flags": 260, "installed": false},
+    {"flags": 516, "installed": false},
+    {"flags": 1028, "installed": false},
+    {"flags": 1048580, "installed": false},
+    {"flags": 2097156, "installed": false},
+    {"flags": 4194308, "installed": false}
+  ]
+}

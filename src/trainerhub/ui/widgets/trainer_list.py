@@ -2,26 +2,65 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QPoint, QRect, QSize, Qt
+from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
-from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtWidgets import (
+    QApplication,
+    QListView,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionButton,
+    QStyleOptionViewItem,
+)
 
-from ...core.models import CatalogItem
+from ...core.models import CatalogItem, RecommendationEntry
+from ...i18n import tr
 from .. import theme as theme_tokens
 
 ITEM_ROLE = Qt.ItemDataRole.UserRole + 1
+ENTRY_ROLE = Qt.ItemDataRole.UserRole + 2
 ROW_HEIGHT = theme_tokens.ROW_HEIGHT
+SELECTABLE = {"ready", "failed", "cancelled"}
 
 
 class TrainerListModel(QAbstractListModel):
+    checked_changed = Signal(object, bool)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._items: list[CatalogItem] = []
+        self._entries: list[RecommendationEntry] = []
 
     def set_items(self, items: list[CatalogItem]) -> None:
         self.beginResetModel()
         self._items = items
+        self._entries = []
         self.endResetModel()
+
+    def set_entries(self, entries: list[RecommendationEntry]) -> None:
+        self.beginResetModel()
+        self._entries = entries
+        self._items = [entry.item for entry in entries]
+        self.endResetModel()
+
+    def entry_at(self, row: int) -> RecommendationEntry | None:
+        return self._entries[row] if 0 <= row < len(self._entries) else None
+
+    def flags(self, index):
+        flags = super().flags(index)
+        entry = self.entry_at(index.row()) if index.isValid() else None
+        if entry is not None and entry.action == "download" and entry.state in SELECTABLE:
+            flags |= Qt.ItemFlag.ItemIsUserCheckable
+        return flags
+
+    def setData(self, index, value, role=Qt.ItemDataRole.EditRole) -> bool:  # noqa: N802
+        entry = self.entry_at(index.row()) if index.isValid() else None
+        if role != Qt.ItemDataRole.CheckStateRole or entry is None or not self.flags(index) & Qt.ItemFlag.ItemIsUserCheckable:
+            return False
+        entry.selected = value == Qt.CheckState.Checked or value == Qt.CheckState.Checked.value
+        self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
+        self.checked_changed.emit(entry.item.key, entry.selected)
+        return True
 
     def item_at(self, row: int) -> CatalogItem | None:
         if 0 <= row < len(self._items):
@@ -51,8 +90,15 @@ class TrainerListModel(QAbstractListModel):
         item = self._items[index.row()]
         if role == ITEM_ROLE:
             return item
+        entry = self.entry_at(index.row())
+        if role == ENTRY_ROLE:
+            return entry
+        if role == Qt.ItemDataRole.CheckStateRole and entry is not None:
+            return Qt.CheckState.Checked if entry.selected else Qt.CheckState.Unchecked
         if role == Qt.ItemDataRole.DisplayRole:
-            return item.game_name
+            return entry.game.name if entry is not None else item.game_name
+        if role == Qt.ItemDataRole.AccessibleTextRole:
+            return f"{entry.game.name if entry else item.game_name} {item.source_id}"
         return None
 
 
@@ -105,6 +151,24 @@ class TrainerDelegate(QStyledItemDelegate):
 
         left = rect.left() + 18
         right = rect.right() - 18
+        entry = index.data(ENTRY_ROLE)
+        if entry is not None:
+            check = QStyleOptionButton()
+            check.rect = QRect(left, rect.center().y() - 8, 16, 16)
+            check.state = QStyle.StateFlag.State_On if entry.selected else QStyle.StateFlag.State_Off
+            if index.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                check.state |= QStyle.StateFlag.State_Enabled
+            QApplication.style().drawControl(QStyle.ControlElement.CE_CheckBox, check, painter)
+            left += 30
+        state = entry.state if entry is not None else ""
+        if item.key in self._installed_keys:
+            state = "installed"
+        if state and state != "ready":
+            label = tr("discovery.installed") if state in {"installed", "done"} else tr(f"state.{state}")
+            painter.setPen(theme_tokens.color(self.theme, "dim"))
+            painter.drawText(QRect(right - 86, rect.top(), 86, rect.height()),
+                             int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), label)
+            right -= 98
 
         title_font = QFont(option.font)
         title_font.setPointSizeF(10.5)
@@ -112,7 +176,7 @@ class TrainerDelegate(QStyledItemDelegate):
         painter.setFont(title_font)
         painter.setPen(theme_tokens.color(self.theme, "text"))
         title_metrics = QFontMetrics(title_font)
-        title = title_metrics.elidedText(item.game_name or item.title, Qt.TextElideMode.ElideRight, right - left)
+        title = title_metrics.elidedText(entry.game.name if entry else (item.game_name or item.title), Qt.TextElideMode.ElideRight, max(0, right - left))
         painter.drawText(
             QRect(left, rect.top() + 10, right - left, 20),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
@@ -124,9 +188,7 @@ class TrainerDelegate(QStyledItemDelegate):
         painter.setFont(sub_font)
         painter.setPen(theme_tokens.color(self.theme, "dim"))
         source_name = self._source_names.get(item.source_id, item.source_id)
-        subtitle = source_name
-        if item.key in self._remote_keys:
-            subtitle = f"{source_name} · {_live_label()}"
+        subtitle = f"{source_name} · {tr('discovery.fallback')}" if item.source_id == "xiaoxing" else source_name
         sub_metrics = QFontMetrics(sub_font)
         subtitle = sub_metrics.elidedText(subtitle, Qt.TextElideMode.ElideRight, right - left)
         painter.drawText(
@@ -135,19 +197,20 @@ class TrainerDelegate(QStyledItemDelegate):
             subtitle,
         )
 
-        if item.key in self._installed_keys:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(theme_tokens.color(self.theme, "success"))
-            painter.drawEllipse(QPoint(right - 3, rect.center().y()), 3, 3)
-
         painter.restore()
 
-
-def _live_label() -> str:
-    from ...i18n import tr
-
-    return tr("source.live")
+    def editorEvent(self, event, model, option, index) -> bool:  # noqa: N802
+        if not index.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+            return False
+        toggle = False
+        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            toggle = QRect(option.rect.left() + 14, option.rect.top(), 28, option.rect.height()).contains(event.position().toPoint())
+        elif event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Space:
+            toggle = True
+        if toggle:
+            checked = index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+            return model.setData(index, Qt.CheckState.Unchecked if checked else Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+        return False
 
 
 class TrainerListView(QListView):
@@ -164,6 +227,29 @@ class TrainerListView(QListView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSpacing(0)
         self.setFrameShape(QListView.Shape.NoFrame)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        index = self.indexAt(event.position().toPoint())
+        if (event.button() == Qt.MouseButton.LeftButton and index.isValid()
+                and index.data(ENTRY_ROLE) is not None
+                and event.position().x() < 44):
+            self._check_press = index
+            event.accept()
+            return
+        self._check_press = None
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        index = getattr(self, "_check_press", None)
+        if index is not None:
+            self._check_press = None
+            if index == self.indexAt(event.position().toPoint()):
+                checked = index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+                self.model().setData(index, Qt.CheckState.Unchecked if checked else Qt.CheckState.Checked,
+                                     Qt.ItemDataRole.CheckStateRole)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         index = self.indexAt(event.position().toPoint())

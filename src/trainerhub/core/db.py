@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from .models import CatalogItem, InstalledItem
+from .models import CatalogItem, InstalledItem, ScanReport, SteamGame
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS catalog (
@@ -50,6 +52,23 @@ CREATE TABLE IF NOT EXISTS installed (
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS steam_games (
+    appid        TEXT NOT NULL,
+    name         TEXT NOT NULL DEFAULT '',
+    library_path TEXT NOT NULL,
+    install_path TEXT NOT NULL DEFAULT '',
+    state_flags  INTEGER NOT NULL DEFAULT 4,
+    build_id     TEXT NOT NULL DEFAULT '',
+    scanned_at   TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (library_path, appid)
+);
+CREATE INDEX IF NOT EXISTS idx_steam_games_appid ON steam_games(appid);
+
+CREATE TABLE IF NOT EXISTS steam_preferences (
+    appid    TEXT PRIMARY KEY,
+    excluded INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -221,6 +240,85 @@ class Database:
                 "DELETE FROM installed WHERE source_id=? AND remote_id=?", (source_id, remote_id)
             )
             self._conn.commit()
+
+    # -- Steam discovery --------------------------------------------------
+    def steam_games(self) -> list[SteamGame]:
+        """Return one game per appid without discarding its other library snapshots."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM steam_games ORDER BY scanned_at DESC, library_path, appid"
+            ).fetchall()
+        games: dict[str, SteamGame] = {}
+        for row in rows:
+            games.setdefault(row["appid"], SteamGame(**dict(row)))
+        return [games[appid] for appid in sorted(games)]
+
+    def save_steam_scan(self, report: ScanReport) -> None:
+        """Atomically replace only complete libraries; cancellation never writes."""
+        if report.cancelled:
+            return
+        if any(status not in {"ok", "unavailable", "invalid"} for status in report.library_status.values()):
+            raise ValueError("Invalid Steam library scan status")
+        successful = {path for path, status in report.library_status.items() if status == "ok"}
+        scanned_at = report.scanned_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
+        rows: dict[tuple[str, str], tuple] = {}
+        for game in report.games:
+            if game.library_path not in successful:
+                continue
+            rows[(game.library_path, game.appid)] = (
+                game.appid,
+                game.name,
+                game.library_path,
+                game.install_path,
+                int(game.state_flags),
+                game.build_id,
+                game.scanned_at or scanned_at,
+            )
+        metadata = [
+            ("discovery.scanned_at", scanned_at),
+            ("discovery.library_status", json.dumps(report.library_status, ensure_ascii=False)),
+            ("discovery.skipped", json.dumps(report.skipped, ensure_ascii=False)),
+        ]
+        if successful:
+            metadata.append(("discovery.snapshot_version", uuid4().hex))
+        # The connection context rolls back deletes, inserts and metadata together.
+        with self._lock, self._conn:
+            self._conn.executemany(
+                "DELETE FROM steam_games WHERE library_path=?", [(path,) for path in successful]
+            )
+            self._conn.executemany(
+                "INSERT INTO steam_games (appid, name, library_path, install_path, state_flags,"
+                " build_id, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                rows.values(),
+            )
+            self._conn.executemany(
+                "INSERT INTO meta (key, value) VALUES (?, ?)"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                metadata,
+            )
+
+    def steam_excluded(self) -> set[str]:
+        with self._lock:
+            rows = self._conn.execute("SELECT appid FROM steam_preferences WHERE excluded=1").fetchall()
+        return {row["appid"] for row in rows}
+
+    def set_steam_excluded(self, appid: str, excluded: bool) -> None:
+        with self._lock, self._conn:
+            if excluded:
+                self._conn.execute(
+                    "INSERT INTO steam_preferences (appid, excluded) VALUES (?, 1)"
+                    " ON CONFLICT(appid) DO UPDATE SET excluded=1",
+                    (appid,),
+                )
+            else:
+                self._conn.execute("DELETE FROM steam_preferences WHERE appid=?", (appid,))
+
+    def clear_discovery(self) -> None:
+        """Forget discovery data without touching catalogue or installed trainers."""
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM steam_games")
+            self._conn.execute("DELETE FROM steam_preferences")
+            self._conn.execute("DELETE FROM meta WHERE key GLOB 'discovery.*'")
 
     # -- meta -------------------------------------------------------------
     def meta_get(self, key: str, default: str = "") -> str:

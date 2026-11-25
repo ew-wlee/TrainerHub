@@ -46,6 +46,11 @@ DEFAULTS: dict[str, Any] = {
         "auto_update_data": False,
         "open_folder_after_download": False,
     },
+    "discovery": {
+        "enabled": False,
+        "scan_on_start": False,
+        "steam_paths": [],
+    },
     "safety": {
         "disclaimer_accepted": False,
         "defender_exclusion_added": False,
