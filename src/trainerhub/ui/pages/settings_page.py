@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -29,6 +30,10 @@ class SettingsPage(QWidget):
     library_changed = Signal(str)
     sources_changed = Signal()
     settings_changed = Signal()
+    discovery_changed = Signal(bool)
+    discovery_paths_changed = Signal()
+    discovery_clear_requested = Signal()
+    discovery_scan_requested = Signal()
 
     def __init__(self, config: Config, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -48,6 +53,7 @@ class SettingsPage(QWidget):
         self.body_layout.setSpacing(12)
 
         self.body_layout.addWidget(self._general_card())
+        self.body_layout.addWidget(self._discovery_card())
         self.body_layout.addWidget(self._sources_card())
         self.body_layout.addWidget(self._download_card())
         self.body_layout.addWidget(self._safety_card())
@@ -117,6 +123,68 @@ class SettingsPage(QWidget):
         self.sync_check.toggled.connect(self._on_sync_toggle)
         layout.addWidget(self.sync_check)
         return frame
+
+    def _discovery_card(self) -> QFrame:
+        frame, layout = self._card(tr("settings.section.discovery"))
+        self.discovery_check = QCheckBox(tr("settings.discovery.enabled"))
+        self.discovery_check.setChecked(bool(self.config.get("discovery.enabled", False)))
+        self.discovery_check.toggled.connect(self.discovery_changed.emit)
+        layout.addWidget(self.discovery_check)
+        self.scan_start_check = QCheckBox(tr("settings.discovery.scan_on_start"))
+        self.scan_start_check.setChecked(bool(self.config.get("discovery.scan_on_start", False)))
+        self.scan_start_check.toggled.connect(lambda checked: self.config.set("discovery.scan_on_start", checked))
+        layout.addWidget(self.scan_start_check)
+        paths_row = QWidget()
+        paths_layout = QHBoxLayout(paths_row)
+        paths_layout.setContentsMargins(0, 0, 0, 0)
+        self.steam_paths_edit = QLineEdit("; ".join(self.config.get("discovery.steam_paths", []) or []))
+        self.steam_paths_edit.setObjectName("Field")
+        self.steam_paths_edit.setPlaceholderText(tr("settings.discovery.paths.placeholder"))
+        self.steam_paths_edit.editingFinished.connect(self._on_steam_paths)
+        browse = QPushButton(tr("action.browse"))
+        browse.setObjectName("GhostButton")
+        browse.clicked.connect(self._browse_steam)
+        paths_layout.addWidget(self.steam_paths_edit, 1)
+        paths_layout.addWidget(browse)
+        layout.addWidget(self._row("settings.discovery.paths", paths_row, "settings.discovery.paths.hint"))
+        actions = QHBoxLayout()
+        scan = QPushButton(tr("discovery.rescan"))
+        scan.setObjectName("GhostButton")
+        scan.clicked.connect(self.discovery_scan_requested.emit)
+        self.clear_discovery_button = QPushButton(tr("settings.discovery.clear"))
+        self.clear_discovery_button.setObjectName("DangerButton")
+        self.clear_discovery_button.clicked.connect(self._clear_discovery)
+        actions.addWidget(scan)
+        actions.addWidget(self.clear_discovery_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+        for key in ("settings.discovery.privacy", "settings.discovery.matching"):
+            note = QLabel(tr(key))
+            note.setObjectName("FieldHint")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+        return frame
+
+    def _on_steam_paths(self) -> None:
+        paths = list(dict.fromkeys(path.strip() for path in self.steam_paths_edit.text().split(";") if path.strip()))
+        self.config.set("discovery.steam_paths", paths)
+        self.discovery_paths_changed.emit()
+
+    def _browse_steam(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("settings.discovery.paths"))
+        if folder:
+            paths = [path.strip() for path in self.steam_paths_edit.text().split(";") if path.strip()]
+            if folder not in paths:
+                paths.append(folder)
+            self.steam_paths_edit.setText("; ".join(paths))
+            self._on_steam_paths()
+
+    def _clear_discovery(self) -> None:
+        answer = QMessageBox.question(self, tr("settings.discovery.clear"), tr("settings.discovery.clear.confirm"),
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                                      QMessageBox.StandardButton.Cancel)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.discovery_clear_requested.emit()
 
     def _sources_card(self) -> QFrame:
         frame, layout = self._card(tr("settings.section.sources"))

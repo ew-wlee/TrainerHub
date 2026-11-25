@@ -95,6 +95,58 @@ class CatalogItem:
 
 
 @dataclass(slots=True)
+class SteamGame:
+    """An installed Steam game discovered from a library manifest."""
+
+    appid: str
+    name: str
+    library_path: str
+    install_path: str
+    state_flags: int = 4
+    build_id: str = ""
+    scanned_at: str = ""
+
+
+@dataclass(slots=True)
+class ScanReport:
+    """Library-level outcomes of one Steam scan."""
+
+    games: list[SteamGame] = field(default_factory=list)
+    library_status: dict[str, str] = field(default_factory=dict)
+    skipped: list[str] = field(default_factory=list)
+    cancelled: bool = False
+    scanned_at: str = ""
+
+
+@dataclass(slots=True)
+class GameMatch:
+    game: SteamGame
+    item: CatalogItem
+    confidence: str
+    reason: str
+
+
+@dataclass(slots=True)
+class RecommendationEntry:
+    game: SteamGame
+    item: CatalogItem
+    confidence: str
+    reason: str
+    selected: bool = True
+    state: str = "ready"
+    action: str = "download"
+
+
+@dataclass(slots=True)
+class RecommendationPlan:
+    entries: list[RecommendationEntry] = field(default_factory=list)
+    unmatched: list[SteamGame] = field(default_factory=list)
+    generation: int = 0
+    generated_at: str = ""
+    snapshot_version: str = ""
+
+
+@dataclass(slots=True)
 class SourcePage:
     """One page of results coming back from a source adapter."""
 
