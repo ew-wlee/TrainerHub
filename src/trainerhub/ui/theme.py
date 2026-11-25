@@ -1,7 +1,8 @@
 """Design tokens and QSS loading.
 
-One token table feeds both the Qt stylesheet and the painted list delegate, so
-colours never drift between "styled widgets" and "custom painted widgets".
+v0.2 is a single light theme: warm paper, white surfaces, hairlines, black
+actions. The dict shape is kept so a dark palette can be added later without
+touching every widget.
 """
 
 from __future__ import annotations
@@ -14,58 +15,49 @@ from PySide6.QtWidgets import QApplication
 from ..core.paths import resource_path
 
 TOKENS: dict[str, dict[str, str]] = {
-    "dark": {
-        "bg": "#0E1116",
-        "surface": "#151A21",
-        "elevated": "#1C232C",
-        "hover": "#232B36",
-        "line": "rgba(255, 255, 255, 0.07)",
-        "line_strong": "rgba(255, 255, 255, 0.14)",
-        "text": "#E6EAF2",
-        "muted": "#98A2B3",
-        "dim": "#5C6672",
-        "primary": "#4E8CFF",
-        "primary_deep": "#3A6FE0",
-        "primary_soft": "rgba(78, 140, 255, 0.16)",
-        "success": "#2DD4BF",
-        "success_soft": "rgba(45, 212, 191, 0.14)",
-        "warn": "#F5A524",
-        "warn_soft": "rgba(245, 165, 36, 0.14)",
-        "danger": "#F0483E",
-        "danger_soft": "rgba(240, 72, 62, 0.14)",
-        "shadow": "rgba(0, 0, 0, 0.45)",
-        "skeleton": "rgba(255, 255, 255, 0.04)",
-    },
     "light": {
-        "bg": "#F5F7FA",
+        "bg": "#FAF8F4",
         "surface": "#FFFFFF",
         "elevated": "#FFFFFF",
-        "hover": "#EEF2F8",
-        "line": "rgba(16, 24, 40, 0.08)",
-        "line_strong": "rgba(16, 24, 40, 0.16)",
-        "text": "#101828",
-        "muted": "#5C6672",
-        "dim": "#98A2B3",
-        "primary": "#3A6FE0",
-        "primary_deep": "#2C57B8",
-        "primary_soft": "rgba(58, 111, 224, 0.10)",
-        "success": "#0FA396",
-        "success_soft": "rgba(15, 163, 150, 0.10)",
-        "warn": "#B54708",
-        "warn_soft": "rgba(181, 71, 8, 0.10)",
-        "danger": "#D92D20",
-        "danger_soft": "rgba(217, 45, 32, 0.10)",
-        "shadow": "rgba(16, 24, 40, 0.08)",
-        "skeleton": "rgba(16, 24, 40, 0.04)",
+        "hover": "#F6F3EC",
+        "sunken": "#EFEBE2",
+        "line": "#E7E2D8",
+        "line_strong": "#D6D0C4",
+        "text": "#191817",
+        "muted": "#4E4B45",
+        "dim": "#6F6B62",
+        "primary": "#191817",
+        "primary_deep": "#2C2A26",
+        "primary_soft": "#EFEBE2",
+        "success": "#2E6B4E",
+        "success_soft": "#E9F0EA",
+        "warn": "#8A5A12",
+        "warn_soft": "#F6EDDF",
+        "danger": "#A63A2C",
+        "danger_soft": "#F7E9E6",
+        "shadow": "rgba(25, 24, 23, 0.18)",
+        "skeleton": "#F1EDE4",
     },
 }
 
-BODY_FAMILIES = ["Microsoft YaHei UI", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Sans Serif"]
-MONO_FAMILIES = ["Cascadia Mono", "Consolas", "SF Mono", "Menlo", "monospace"]
+BODY_FAMILIES = [
+    "SF Pro Text",
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei UI",
+    "Noto Sans CJK SC",
+    "Sans Serif",
+]
+MONO_FAMILIES = ["SF Mono", "Cascadia Mono", "Consolas", "Menlo", "monospace"]
+
+ROW_HEIGHT = 56
+INSPECTOR_WIDTH = 280
+RAIL_WIDTH = 188
 
 
 def token(theme: str, name: str) -> str:
-    return TOKENS.get(theme, TOKENS["dark"]).get(name, "#000000")
+    return TOKENS["light"].get(name, "#000000")
 
 
 def color(theme: str, name: str) -> QColor:
@@ -93,20 +85,20 @@ def mono_font(point_size: int = 10) -> QFont:
     return font
 
 
-def stylesheet(theme: str) -> str:
+def stylesheet(theme: str = "light") -> str:
     path: Path = resource_path("ui", "qss", "app.qss")
     try:
         template = path.read_text(encoding="utf-8")
     except OSError:
         return ""
     # Longest key first, otherwise "@primary" eats the "@primary_soft" prefix.
-    for name, value in sorted(TOKENS.get(theme, TOKENS["dark"]).items(), key=lambda kv: -len(kv[0])):
+    for name, value in sorted(TOKENS["light"].items(), key=lambda kv: -len(kv[0])):
         template = template.replace(f"@{name}", value)
     template = template.replace("@body_font", pick_family(BODY_FAMILIES))
     template = template.replace("@mono_font", pick_family(MONO_FAMILIES))
     return template
 
 
-def apply(app: QApplication, theme: str) -> None:
+def apply(app: QApplication, theme: str = "light") -> None:
     app.setFont(build_font())
-    app.setStyleSheet(stylesheet(theme))
+    app.setStyleSheet(stylesheet("light"))

@@ -21,6 +21,7 @@ from trainerhub.app import TrainerHubApp  # noqa: E402
 from trainerhub.core.models import InstalledItem  # noqa: E402
 from trainerhub.i18n import tr  # noqa: E402
 from trainerhub.ui.dialogs.welcome_wizard import WelcomeWizard  # noqa: E402
+from trainerhub.ui.pages.library_page import InstalledRow  # noqa: E402
 
 OUT = ROOT / "docs" / "screenshots"
 
@@ -99,7 +100,7 @@ def main() -> int:
     controller._show_window()
     window = controller.window
     app = controller.app
-    window.setFixedSize(1280, 820)
+    window.setFixedSize(1024, 576)
     wait(app, 500)
 
     # Warm the first few FLiNG rows so their version pills are populated —
@@ -119,13 +120,24 @@ def main() -> int:
         print("index is empty — run a sync first")
         return 1
 
-    # 1) Discover, all sources
+    # Seed the library first so the list can show installed dots.
+    demo_records = seed_library(controller)
+    window._load_items()
+    wait(app, 300)
+
+    # 1) Discover, all sources — pick a row that is not installed so the
+    # inspector shows the download action.
     window.rail.set_active_source("all")
     window._on_source_filter("all")
     window._switch_page("discover")
     window._run_search()
     wait(app, 300)
-    window.discover.select_row(0)
+    model = window.discover.model
+    target = next(
+        (row for row in range(model.rowCount()) if model.item_at(row).game_name == "Final Fantasy VII Remake Intergrade"),
+        0,
+    )
+    window.discover.select_row(target)
     wait(app, 2200)
     grab(window, "01-discover.png")
 
@@ -158,10 +170,13 @@ def main() -> int:
     wait(app, 300)
     grab(window, "03-downloads.png")
 
-    # 4) Library — seeded so the table, the sizes and the update badge are visible.
-    demo_records = seed_library(controller)
+    # 4) Library — seeded above; show the hover actions on one row.
     window._switch_page("library")
     wait(app, 300)
+    rows = window.library_page.container.findChildren(InstalledRow)
+    if rows:
+        rows[0]._show_actions(True)
+    wait(app, 120)
     grab(window, "04-library.png")
 
     # 5) Settings

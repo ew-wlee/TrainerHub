@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
@@ -95,11 +95,11 @@ class EmptyState(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.glyph = QLabel("◈")
+        self.glyph.setObjectName("EmptyGlyph")
         self.glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
         glyph_font = QFont()
-        glyph_font.setPointSize(30)
+        glyph_font.setPointSize(22)
         self.glyph.setFont(glyph_font)
-        self.glyph.setStyleSheet("color: rgba(78, 140, 255, 0.55);")
 
         self.title = QLabel(title)
         self.title.setObjectName("EmptyTitle")
@@ -186,3 +186,44 @@ class HeaderBar(QWidget):
 
     def add_action(self, widget: QWidget) -> None:
         self.actions.addWidget(widget)
+
+
+class SegmentedControl(QWidget):
+    """Small Apple-style switch used by the download centre."""
+
+    changed = Signal(str)
+
+    def __init__(
+        self,
+        options: list[tuple[str, str]],
+        current: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("Segmented")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(2)
+        self._buttons: dict[str, QPushButton] = {}
+        active = current or (options[0][0] if options else "")
+        for value, label in options:
+            button = QPushButton(label)
+            button.setObjectName("SegmentButton")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setProperty("active", "true" if value == active else "false")
+            button.clicked.connect(lambda _=False, val=value: self.set_current(val))
+            layout.addWidget(button)
+            self._buttons[value] = button
+        self._current = active
+
+    def current(self) -> str:
+        return self._current
+
+    def set_current(self, value: str) -> None:
+        if value == self._current:
+            return
+        self._current = value
+        for key, button in self._buttons.items():
+            button.setProperty("active", "true" if key == value else "false")
+            repolish(button)
+        self.changed.emit(value)

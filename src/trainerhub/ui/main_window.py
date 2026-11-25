@@ -1,4 +1,4 @@
-"""Main window: rail + top bar + stacked pages + status bar."""
+"""Main window: brand + search bar, rail, pages, on-demand inspector."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -28,13 +28,13 @@ from ..core.library import LibraryService, open_in_file_manager
 from ..core.models import CatalogItem, InstalledItem
 from ..core.paths import resource_path
 from ..core.search import SearchEngine
-from ..core.textutil import human_size
+from ..core.textutil import normalize
 from ..core.updater import UpdateService
 from ..i18n import tr
 from ..workers.detail_worker import DetailWorker
 from ..workers.download_worker import DownloadWorker
+from ..workers.search_worker import SearchWorker
 from ..workers.sync_worker import SyncWorker
-from . import theme as theme_tokens
 from .pages.discover_page import DiscoverPage
 from .pages.downloads_page import DownloadsPage
 from .pages.library_page import LibraryPage
@@ -77,18 +77,21 @@ class MainWindow(QMainWindow):
         self._current: CatalogItem | None = None
         self._detail_pending: set[tuple[str, str]] = set()
 
+        self._remote_items: dict[tuple[str, str], CatalogItem] = {}
+        self._remote_cache: dict[str, list[CatalogItem]] = {}
+        self._search_workers: set[SearchWorker] = set()
+
         self.sync_worker: SyncWorker | None = workers.get("sync")
         self.detail_worker: DetailWorker | None = workers.get("detail")
         self.download_worker: DownloadWorker | None = workers.get("download")
 
         self.setWindowTitle(f"{APP_NAME} · {VERSION}")
         self.setWindowIcon(QIcon(str(resource_path("resources", "app_icon.svg"))))
-        self.setMinimumSize(1100, 700)
-        self.resize(1280, 800)
+        self.setMinimumSize(960, 540)
+        self.resize(1024, 576)
 
         self._build_ui()
         self._wire()
-        self._apply_theme(config.theme)
         self._load_items(initial=True)
 
     # -- construction -----------------------------------------------------
@@ -119,31 +122,54 @@ class MainWindow(QMainWindow):
         # -- top bar -----------------------------------------------------
         top_bar = QWidget()
         top_bar.setObjectName("TopBar")
-        top_bar.setFixedHeight(60)
+        top_bar.setFixedHeight(52)
         top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(20, 10, 20, 10)
+        top_layout.setContentsMargins(14, 8, 14, 8)
         top_layout.setSpacing(10)
+
+        mark = QLabel()
+        mark.setObjectName("BrandMark")
+        pixmap = QPixmap(str(resource_path("resources", "app_mark.svg")))
+        if not pixmap.isNull():
+            mark.setPixmap(
+                pixmap.scaled(
+                    16,
+                    16,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        self.brand = QLabel(APP_NAME)
+        self.brand.setObjectName("BrandName")
 
         self.search_box = QLineEdit()
         self.search_box.setObjectName("SearchBox")
         self.search_box.setPlaceholderText(tr("search.placeholder"))
         self.search_box.setClearButtonEnabled(True)
-        self.search_box.setMinimumWidth(280)
-        self.search_box.setMaximumWidth(560)
+        self.search_box.setFixedWidth(300)
 
-        self.sync_button = QPushButton(tr("action.sync"))
-        self.sync_button.setObjectName("GhostButton")
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("TopStatus")
+        self.status_label.setMaximumWidth(280)
+
+        self.sync_button = QPushButton("⟳")
+        self.sync_button.setObjectName("IconButton")
         self.sync_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sync_button.setToolTip(tr("action.sync"))
 
-        self.theme_button = QPushButton(tr("settings.theme.light"))
-        self.theme_button.setObjectName("IconButton")
-        self.theme_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.theme_button.setToolTip(tr("settings.theme"))
+        self.settings_button = QPushButton("⚙")
+        self.settings_button.setObjectName("IconButton")
+        self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_button.setToolTip(tr("nav.settings"))
 
+        top_layout.addWidget(mark)
+        top_layout.addWidget(self.brand)
+        top_layout.addSpacing(8)
         top_layout.addWidget(self.search_box)
+        top_layout.addWidget(self.status_label)
         top_layout.addStretch(1)
         top_layout.addWidget(self.sync_button)
-        top_layout.addWidget(self.theme_button)
+        top_layout.addWidget(self.settings_button)
         right_layout.addWidget(top_bar)
 
         # -- pages -------------------------------------------------------
@@ -159,21 +185,6 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.settings)
         right_layout.addWidget(self.stack, 1)
 
-        # -- status bar --------------------------------------------------
-        status = QWidget()
-        status.setObjectName("StatusBar")
-        status.setFixedHeight(26)
-        status_layout = QHBoxLayout(status)
-        status_layout.setContentsMargins(20, 0, 20, 0)
-        status_layout.setSpacing(12)
-        self.status_left = QLabel(tr("status.ready"))
-        self.status_right = QLabel(str(self.config.library_dir))
-        self.status_right.setMaximumWidth(520)
-        status_layout.addWidget(self.status_left)
-        status_layout.addStretch(1)
-        status_layout.addWidget(self.status_right)
-        right_layout.addWidget(status)
-
         outer.addWidget(right, 1)
         self.toast = Toast(root)
 
@@ -182,18 +193,24 @@ class MainWindow(QMainWindow):
         self._search_timer.setInterval(170)
         self._search_timer.timeout.connect(self._run_search)
 
+        self._remote_timer = QTimer(self)
+        self._remote_timer.setSingleShot(True)
+        self._remote_timer.setInterval(320)
+        self._remote_timer.timeout.connect(self._start_remote_search)
+
     def _wire(self) -> None:
         self.rail.navigate.connect(self._switch_page)
         self.rail.source_changed.connect(self._on_source_filter)
-        self.search_box.textChanged.connect(lambda _text: self._search_timer.start())
+        self.search_box.textChanged.connect(self._on_search_text)
         self.sync_button.clicked.connect(self.start_sync)
-        self.theme_button.clicked.connect(self._toggle_theme)
+        self.settings_button.clicked.connect(lambda: self._switch_page("settings"))
 
         self.discover.selection_changed.connect(self._on_selection)
         self.discover.download_requested.connect(self._enqueue_download)
         self.discover.open_page_requested.connect(self._open_page)
         self.discover.open_folder_requested.connect(self._open_folder)
         self.discover.sync_requested.connect(self.start_sync)
+        self.discover.closed.connect(self._on_inspector_closed)
 
         self.downloads.cancel_requested.connect(self._cancel_download)
 
@@ -203,7 +220,6 @@ class MainWindow(QMainWindow):
         self.library_page.run_requested.connect(self._run_trainer)
         self.library_page.delete_requested.connect(self._delete_record)
 
-        self.settings.theme_changed.connect(self._apply_theme)
         self.settings.language_changed.connect(self.language_change_requested.emit)
         self.settings.library_changed.connect(self._on_library_changed)
         self.settings.sources_changed.connect(self._on_sources_changed)
@@ -218,6 +234,8 @@ class MainWindow(QMainWindow):
             self.download_worker.job_failed.connect(self._on_job_failed)
             self.download_worker.job_external.connect(self._on_job_external)
 
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self._close_inspector)
+
         geometry = self.config.get("ui.window_geometry", "")
         if geometry:
             try:
@@ -225,11 +243,17 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
 
+    # -- status -----------------------------------------------------------
+    def _set_status(self, text: str, timeout_ms: int = 0) -> None:
+        self.status_label.setText(text)
+        self.status_label.setToolTip(text)
+        if timeout_ms:
+            QTimer.singleShot(timeout_ms, lambda: self.status_label.setText(""))
+
     # -- items & search ---------------------------------------------------
     def _load_items(self, *, initial: bool = False) -> None:
         self.items = self._db_items()
         self.search.rebuild(self.items)
-        self._refresh_counts()
         self._run_search()
         self._refresh_library()
         if initial and not self.items:
@@ -238,32 +262,116 @@ class MainWindow(QMainWindow):
     def _db_items(self) -> list[CatalogItem]:
         return self.library.db.all_items()
 
-    def _refresh_counts(self) -> None:
-        counts = self.library.db.count_by_source()
-        self.rail.set_counts(counts)
-        self.rail.set_footer(str(self.config.library_dir))
+    def _installed_keys(self) -> set[tuple[str, str]]:
+        return {record.key for record in self.library.db.installed_all()}
 
     def _on_source_filter(self, source_id: str) -> None:
         self.source_filter = source_id
         self.config.set("ui.last_source", source_id)
         self._switch_page("discover")
         self._run_search()
+        self._remote_timer.start()
+
+    def _on_search_text(self, _text: str) -> None:
+        self._search_timer.start()
+        self._remote_timer.start()
 
     def _run_search(self) -> None:
         query = self.search_box.text().strip()
         hits = self.search.query(query, source_id=self.source_filter, limit=2000)
-        items = [hit.item for hit in hits]
+        if query and self._remote_items:
+            # A live result exists, so keep only confident local matches instead
+            # of padding the list with fuzzy near-misses.
+            strong = [hit for hit in hits if hit.score >= 380]
+            if strong:
+                hits = strong
+            elif len(hits) > 0:
+                hits = []
+        local_items = [hit.item for hit in hits]
+        local_keys = {item.key for item in local_items}
+
+        remote_items: list[CatalogItem] = []
+        if query and self.source_filter in ("all", "fling"):
+            needle = normalize(query)
+            local_names = {normalize(item.game_name) for item in local_items}
+            local_names |= {normalize(item.game_alias) for item in local_items if item.game_alias}
+            for key, item in self._remote_items.items():
+                if key in local_keys or normalize(item.game_name) in local_names:
+                    continue
+                haystack = normalize(f"{item.game_name} {item.title}")
+                if needle and needle not in haystack:
+                    continue
+                remote_items.append(item)
+
+        items = local_items + remote_items
+        self.discover.set_remote_keys(set(self._remote_items.keys()))
+        self.discover.set_installed_keys(self._installed_keys())
+
         if not items:
             if query:
                 self.discover.set_empty_mode("noresult", query)
-            elif not self.items:
-                self.discover.set_empty_mode("empty")
             else:
-                self.discover.set_empty_mode("noresult", query)
+                self.discover.set_empty_mode("empty")
+            self._current = None
             return
+
         self.discover.set_items(items)
-        if self._current is None:
-            self.discover.select_row(0)
+        if self._current is not None and self._current.key in {item.key for item in items}:
+            row = self.discover.model.row_of(self._current.key)
+            if row >= 0:
+                self.discover.select_row(row)
+        else:
+            self._current = None
+            self.discover.hide_detail()
+
+    # -- live search ------------------------------------------------------
+    def _start_remote_search(self) -> None:
+        query = self.search_box.text().strip()
+        allowed = len(query) >= 2 and self.source_filter in ("all", "fling")
+        if not allowed:
+            if self._remote_items:
+                self._remote_items.clear()
+                self._run_search()
+            return
+
+        cached = self._remote_cache.get(query.lower())
+        if cached is not None:
+            self._remote_items = {item.key: item for item in cached}
+            self._run_search()
+            return
+
+        for worker in list(self._search_workers):
+            worker.requestInterruption()
+
+        worker = SearchWorker(query, self)
+        worker.results.connect(self._on_remote_results)
+        worker.failed.connect(self._on_remote_failed)
+        worker.finished.connect(lambda w=worker: self._retire_worker(w))
+        self._search_workers.add(worker)
+        worker.start()
+        self._set_status(tr("search.remote.loading"))
+
+    def _retire_worker(self, worker: SearchWorker) -> None:
+        self._search_workers.discard(worker)
+        worker.deleteLater()
+
+    def _on_remote_results(self, term: str, items: list[CatalogItem]) -> None:
+        if term != self.search_box.text().strip():
+            return
+        self._remote_cache[term.lower()] = items
+        if len(self._remote_cache) > 20:
+            oldest = next(iter(self._remote_cache))
+            self._remote_cache.pop(oldest, None)
+        self._remote_items = {item.key: item for item in items}
+        self._set_status("")
+        self._run_search()
+
+    def _on_remote_failed(self, term: str, _message: str) -> None:
+        if term != self.search_box.text().strip():
+            return
+        self._remote_items.clear()
+        self._set_status(tr("search.remote.offline"), 4000)
+        self._run_search()
 
     # -- detail -----------------------------------------------------------
     def _on_selection(self, item: CatalogItem) -> None:
@@ -272,7 +380,8 @@ class MainWindow(QMainWindow):
         installed = self.library.installed(item)
         source_name = tr(SOURCE_LABEL_KEYS.get(item.source_id, item.source_id))
         direct = source.supports_direct_download if source else item.supports_direct_download
-        self.discover.show_detail(item, installed, source_name, direct)
+        remote = item.key in self._remote_items
+        self.discover.show_detail(item, installed, source_name, direct, remote=remote)
 
         if (
             not item.detail_loaded
@@ -282,7 +391,7 @@ class MainWindow(QMainWindow):
             and item.key not in self._detail_pending
         ):
             self._detail_pending.add(item.key)
-            self.status_left.setText(tr("detail.loading"))
+            self._set_status(tr("detail.loading"))
             self.detail_worker.submit(item)
 
     def _on_detail_ready(self, item: CatalogItem) -> None:
@@ -291,16 +400,25 @@ class MainWindow(QMainWindow):
             if existing.key == item.key:
                 self.items[index] = item
                 break
+        if item.key in self._remote_items:
+            self._remote_items[item.key] = item
         self.search.rebuild(self.items)
         self.discover.replace_item(item)
         if self._current is not None and self._current.key == item.key:
             self._on_selection(item)
-        self.status_left.setText(tr("status.ready"))
+        self._set_status("")
 
     def _on_detail_failed(self, key: str, message: str) -> None:
         self._detail_pending.discard(tuple(key.split(":", 1)))  # type: ignore[arg-type]
-        self.status_left.setText(tr("status.ready"))
+        self._set_status("")
         logging.getLogger("trainerhub.detail").warning("detail failed for %s: %s", key, message)
+
+    def _on_inspector_closed(self) -> None:
+        self._current = None
+
+    def _close_inspector(self) -> None:
+        self._current = None
+        self.discover.hide_detail()
 
     # -- sync -------------------------------------------------------------
     def start_sync(self) -> None:
@@ -313,23 +431,25 @@ class MainWindow(QMainWindow):
         self.sync_worker.source_failed.connect(self._on_source_failed)
         self.sync_worker.finished_all.connect(self._on_sync_done)
         self.sync_button.setEnabled(False)
-        self.status_left.setText(tr("status.syncing", source="…", page=1))
+        self._set_status(tr("status.syncing", source="…", page=1))
         self.sync_worker.start()
 
     def _on_sync_progress(self, source_id: str, page: int, count: int) -> None:
-        self.status_left.setText(tr("status.syncing", source=tr(SOURCE_LABEL_KEYS.get(source_id, source_id)), page=page))
+        self._set_status(
+            tr("status.syncing", source=tr(SOURCE_LABEL_KEYS.get(source_id, source_id)), page=page)
+        )
 
     def _on_source_done(self, source_id: str, count: int) -> None:
-        self.status_left.setText(tr("status.synced", count=count))
+        self._set_status(tr("status.synced", count=count))
 
     def _on_source_failed(self, source_id: str, message: str) -> None:
-        self.status_left.setText(tr("status.offline"))
+        self._set_status(tr("status.offline"))
         self.toast.show_message(tr("error.network"), 3200)
 
     def _on_sync_done(self, total: int, failures: int) -> None:
         self.sync_button.setEnabled(True)
         self._load_items()
-        self.status_left.setText(tr("toast.synced", count=total))
+        self._set_status(tr("toast.synced", count=total), 4000)
         if failures:
             self.toast.show_message(tr("error.network"), 3200)
         else:
@@ -344,6 +464,16 @@ class MainWindow(QMainWindow):
             if record:
                 open_in_file_manager(Path(record.path))
             return
+
+        # A live result becomes a real catalogue row the moment it is used.
+        if item.key in self._remote_items:
+            self.library.db.upsert_items([item])
+            self._remote_items.pop(item.key, None)
+            if not any(existing.key == item.key for existing in self.items):
+                self.items.append(item)
+            self.search.rebuild(self.items)
+            self.discover.set_remote_keys(set(self._remote_items.keys()))
+
         job_id = f"{item.source_id}:{item.remote_id}"
         self.downloads.add_job(job_id, item, tr(SOURCE_LABEL_KEYS.get(item.source_id, item.source_id)))
         self.download_worker.enqueue(item)
@@ -362,6 +492,7 @@ class MainWindow(QMainWindow):
         self._refresh_library()
         if self._current is not None and self._current.key == record.key:
             self.discover.update_installed(record)
+        self.discover.set_installed_keys(self._installed_keys())
 
     def _on_job_failed(self, job_id: str, reason: str) -> None:
         self.toast.show_message(tr("toast.download.failed", reason=reason.splitlines()[0][:90]), 3600)
@@ -374,10 +505,8 @@ class MainWindow(QMainWindow):
     # -- library ----------------------------------------------------------
     def _refresh_library(self) -> None:
         records = self.library.db.installed_all()
-        service = UpdateService(self.library.db, self.sources)
-        updates = {candidate.item.key: candidate.item.version for candidate in service.candidates()}
-        self.library_page.set_records(records, updates)
-        self.status_right.setText(f"{self.config.library_dir}  ·  {human_size(self.library.total_bytes())}")
+        self.library_page.set_records(records)
+        self.discover.set_installed_keys(self._installed_keys())
 
     def _import_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("library.import.title"), str(self.config.library_dir))
@@ -438,7 +567,7 @@ class MainWindow(QMainWindow):
         mapping = {"discover": 0, "downloads": 1, "library": 2, "settings": 3}
         index = mapping.get(page, 0)
         self.stack.setCurrentIndex(index)
-        self.rail.set_active_page(page)
+        self.rail.set_active_page(page if page in mapping and page != "settings" else "")
         if page == "library":
             self._refresh_library()
         if page == "discover":
@@ -446,29 +575,11 @@ class MainWindow(QMainWindow):
 
     def _on_library_changed(self, folder: str) -> None:
         self.library.root = Path(folder)
-        self._refresh_counts()
         self._refresh_library()
 
     def _on_sources_changed(self) -> None:
         if self.on_rebuild is not None:
             self.on_rebuild()
-
-    def _toggle_theme(self) -> None:
-        theme = "light" if self.config.theme == "dark" else "dark"
-        self.config.set("theme", theme)
-        self._apply_theme(theme)
-
-    def _apply_theme(self, theme: str) -> None:
-        from PySide6.QtWidgets import QApplication
-
-        self.config.set("theme", theme)
-        app = QApplication.instance()
-        if app is not None:
-            theme_tokens.apply(app, theme)
-        self.theme_button.setText(
-            tr("settings.theme.light") if theme == "dark" else tr("settings.theme.dark")
-        )
-        self.discover.set_theme(theme)
 
     def _open_page(self, item: CatalogItem) -> None:
         if item.page_url:
@@ -490,6 +601,9 @@ class MainWindow(QMainWindow):
                 worker.stop()
             if worker.isRunning():
                 worker.wait(3000)
+        for worker in list(self._search_workers):
+            worker.stop()
+            worker.wait(1500)
         super().closeEvent(event)
 
 

@@ -34,7 +34,7 @@ DEFAULT_SOURCES: dict[str, dict[str, Any]] = {
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
     "first_run": True,
-    "theme": "dark",
+    "theme": "light",
     "language": "zh_CN",
     "library_dir": "",
     "sources": DEFAULT_SOURCES,
@@ -136,7 +136,7 @@ class Config:
     # -- shortcuts --------------------------------------------------------
     @property
     def theme(self) -> str:
-        return self.get("theme", "dark")
+        return self.get("theme", "light")
 
     @property
     def language(self) -> str:

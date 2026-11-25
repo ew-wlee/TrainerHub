@@ -2,13 +2,11 @@
   "app.name": "TrainerHub",
   "app.tagline": "One window for every single-player trainer",
   "app.version": "Version {version}",
-
   "nav.discover": "Discover",
   "nav.downloads": "Downloads",
   "nav.library": "Library",
   "nav.settings": "Settings",
   "nav.section.sources": "Sources",
-
   "source.all": "All sources",
   "source.fling": "FLiNG Trainer",
   "source.xiaoxing": "XiaoXing",
@@ -16,13 +14,11 @@
   "source.local": "Local import",
   "source.direct": "Direct download",
   "source.external": "Opens page",
-
   "search.placeholder": "Search a game, pinyin or English name…",
   "search.empty": "Type to search — Chinese, English and pinyin initials all work",
-
   "action.sync": "Sync",
   "action.sync_all": "Sync all sources",
-  "action.download": "Download",
+  "action.download": "Download & archive",
   "action.open_page": "Open page",
   "action.open_folder": "Open folder",
   "action.run": "Launch trainer",
@@ -41,14 +37,12 @@
   "action.next": "Next",
   "action.finish": "Start using it",
   "action.browse": "Browse…",
-
   "status.ready": "Ready",
   "status.syncing": "Syncing {source} · page {page}",
   "status.synced": "{count} entries synced",
   "status.count": "{count} results",
   "status.library": "Library {size}",
   "status.offline": "Network issue — showing cached index",
-
   "discover.title": "Discover trainers",
   "discover.subtitle": "Aggregated from several sites, searched locally",
   "discover.empty.title": "Nothing indexed yet",
@@ -56,7 +50,6 @@
   "discover.empty.action": "Sync now",
   "discover.noresult.title": "No match for “{query}”",
   "discover.noresult.body": "Try the English name, pinyin initials, or a different source filter.",
-
   "detail.placeholder": "Pick a game on the left to see details",
   "detail.options": "Options",
   "detail.options.more": "+{count} more",
@@ -68,7 +61,6 @@
   "detail.installed": "Installed",
   "detail.loading": "Loading details…",
   "detail.external_hint": "This source distributes through a file host — the page opens in your browser.",
-
   "downloads.title": "Downloads",
   "downloads.empty.title": "The queue is empty",
   "downloads.empty.body": "Double-click any result in Discover to start.",
@@ -80,7 +72,6 @@
   "state.done": "Done",
   "state.failed": "Failed",
   "state.cancelled": "Cancelled",
-
   "library.title": "My library",
   "library.empty.title": "Your library is empty",
   "library.empty.body": "Downloads get archived here automatically — you can also import an existing folder.",
@@ -92,7 +83,6 @@
   "library.import.done": "Imported {count} folders",
   "library.delete.confirm": "Delete “{name}” and its files? This cannot be undone.",
   "library.update.available": "Update available",
-
   "settings.title": "Settings",
   "settings.section.general": "General",
   "settings.section.sources": "Sources",
@@ -118,7 +108,6 @@
   "settings.about.body": "TrainerHub is an open-source manager that aggregates, downloads and archives single-player game trainers.",
   "settings.about.license": "Released under the MIT license",
   "settings.about.disclaimer": "Single-player, offline use only. This project ships no anti-cheat bypass of any kind.",
-
   "wizard.welcome": "Welcome to TrainerHub",
   "wizard.welcome.body": "Bring trainers scattered across sites into one window: search, download, auto-extract, archive and update.",
   "wizard.disclaimer.title": "Before you start",
@@ -132,7 +121,6 @@
   "wizard.sync.body": "The first sync pulls the whole catalogue; later runs are incremental.",
   "wizard.done.title": "All set",
   "wizard.done.body": "{count} trainer records indexed.",
-
   "dialog.disclaimer.title": "Single-player notice",
   "dialog.disclaimer.body": "Using third-party trainers carries risk. Please confirm:\n\n• Single-player, offline mode only;\n• Trainer files come from third-party sites and are not vetted by this app;\n• Using them in games with online components may breach the terms of service.",
   "dialog.confirm.title": "Please confirm",
@@ -142,15 +130,23 @@
   "dialog.updates.body": "Select the ones to refresh; they will be downloaded and re-archived.",
   "dialog.run.title": "Launch trainer",
   "dialog.run.body": "About to launch “{name}”. Make sure the game is in single-player mode.",
-
   "toast.download.queued": "Added to the download queue",
   "toast.download.done": "“{name}” archived",
   "toast.download.failed": "Download failed: {reason}",
   "toast.import.done": "Imported {count} items",
   "toast.copied": "Copied",
   "toast.synced": "Sync finished — {count} entries",
-
   "error.network": "Network request failed, please retry",
   "error.structure": "Page structure changed; this source cannot be parsed right now",
-  "error.external": "No direct file for this source — opened in your browser"
+  "error.external": "No direct file for this source — opened in your browser",
+  "detail.close": "Close",
+  "detail.remote_note": "Live result from the source · not indexed yet",
+  "detail.fact.options": "{count} options",
+  "detail.fact.unknown": "Details on the source page",
+  "source.live": "live",
+  "search.remote.loading": "Searching the source…",
+  "search.remote.offline": "Live search unavailable — showing local results",
+  "downloads.filter.all": "All",
+  "downloads.filter.active": "Active",
+  "downloads.filter.done": "Done"
 }
