@@ -12,6 +12,7 @@ datas = [
     (str(SRC / "trainerhub" / "i18n" / "zh_CN.json"), "trainerhub/i18n"),
     (str(SRC / "trainerhub" / "i18n" / "en_US.json"), "trainerhub/i18n"),
     (str(RES / "app_icon.svg"), "trainerhub/resources"),
+    (str(RES / "app_mark.svg"), "trainerhub/resources"),
 ]
 
 excludes = [

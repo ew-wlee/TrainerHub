@@ -2,13 +2,11 @@
   "app.name": "修改器管家",
   "app.tagline": "一个窗口，管好所有单机修改器",
   "app.version": "版本 {version}",
-
   "nav.discover": "发现",
   "nav.downloads": "下载中心",
   "nav.library": "我的库",
   "nav.settings": "设置",
-  "nav.section.sources": "数据源",
-
+  "nav.section.sources": "来源",
   "source.all": "全部来源",
   "source.fling": "风灵月影",
   "source.xiaoxing": "小幸修改器",
@@ -16,13 +14,11 @@
   "source.local": "本地导入",
   "source.direct": "可直下",
   "source.external": "跳转下载",
-
   "search.placeholder": "搜索游戏名、拼音或英文名…",
   "search.empty": "输入关键词开始搜索，支持中文、英文和拼音首字母",
-
   "action.sync": "同步",
   "action.sync_all": "同步全部来源",
-  "action.download": "下载",
+  "action.download": "下载并归档",
   "action.open_page": "打开下载页",
   "action.open_folder": "打开文件夹",
   "action.run": "运行修改器",
@@ -41,14 +37,12 @@
   "action.next": "下一步",
   "action.finish": "开始使用",
   "action.browse": "选择…",
-
   "status.ready": "就绪",
   "status.syncing": "正在同步 {source} · 第 {page} 页",
   "status.synced": "已同步 {count} 条",
   "status.count": "{count} 条结果",
   "status.library": "库容量 {size}",
   "status.offline": "网络异常，已使用本地缓存",
-
   "discover.title": "发现修改器",
   "discover.subtitle": "来自多个站点，本地索引即时搜索",
   "discover.empty.title": "还没有索引数据",
@@ -56,7 +50,6 @@
   "discover.empty.action": "立即同步",
   "discover.noresult.title": "没有找到「{query}」",
   "discover.noresult.body": "试试英文名、拼音首字母，或者换个来源筛选。",
-
   "detail.placeholder": "从左侧选择一款游戏查看详情",
   "detail.options": "修改项",
   "detail.options.more": "还有 {count} 项",
@@ -68,7 +61,6 @@
   "detail.installed": "已安装",
   "detail.loading": "正在读取详情…",
   "detail.external_hint": "该来源通过网盘分发，点击后会用浏览器打开原页面。",
-
   "downloads.title": "下载中心",
   "downloads.empty.title": "队列是空的",
   "downloads.empty.body": "在发现页双击任意一条记录即可开始下载。",
@@ -80,7 +72,6 @@
   "state.done": "已完成",
   "state.failed": "失败",
   "state.cancelled": "已取消",
-
   "library.title": "我的库",
   "library.empty.title": "库还是空的",
   "library.empty.body": "下载的修改器会自动归档到这里，也可以导入已有文件夹。",
@@ -92,7 +83,6 @@
   "library.import.done": "已导入 {count} 个文件夹",
   "library.delete.confirm": "确定要删除「{name}」及其文件吗？此操作不可撤销。",
   "library.update.available": "有更新",
-
   "settings.title": "设置",
   "settings.section.general": "通用",
   "settings.section.sources": "数据源",
@@ -118,7 +108,6 @@
   "settings.about.body": "TrainerHub 是一个开源的单机游戏修改器管理器，用于聚合、下载与归档来自不同站点的修改器。",
   "settings.about.license": "以 MIT 许可发布",
   "settings.about.disclaimer": "仅限单人离线游戏使用。本项目不提供任何反作弊绕过手段。",
-
   "wizard.welcome": "欢迎使用修改器管家",
   "wizard.welcome.body": "把散落在各个站点的修改器收进一个窗口：搜索、下载、自动解压归档、检查更新。",
   "wizard.disclaimer.title": "使用前请确认",
@@ -132,7 +121,6 @@
   "wizard.sync.body": "首次同步会拉取游戏目录，之后只做增量更新。",
   "wizard.done.title": "准备就绪",
   "wizard.done.body": "共索引 {count} 条修改器记录。",
-
   "dialog.disclaimer.title": "单机使用声明",
   "dialog.disclaimer.body": "下载并使用第三方修改器存在风险。请确认：\n\n• 仅用于单人、离线游戏模式；\n• 修改器文件来自第三方站点，本程序不对其安全性作担保；\n• 在含在线组件的游戏中使用，可能导致封号或违反服务条款。",
   "dialog.confirm.title": "请确认",
@@ -142,15 +130,23 @@
   "dialog.updates.body": "勾选需要更新的项目，程序会重新下载并覆盖归档。",
   "dialog.run.title": "运行修改器",
   "dialog.run.body": "即将启动「{name}」。请确认游戏已经进入单人模式。",
-
   "toast.download.queued": "已加入下载队列",
   "toast.download.done": "「{name}」已归档",
   "toast.download.failed": "下载失败：{reason}",
   "toast.import.done": "已导入 {count} 项",
   "toast.copied": "已复制",
   "toast.synced": "同步完成，共 {count} 条",
-
   "error.network": "网络请求失败，请稍后重试",
   "error.structure": "页面结构变化，暂时无法解析该来源",
-  "error.external": "该来源没有直链，已用浏览器打开"
+  "error.external": "该来源没有直链，已用浏览器打开",
+  "detail.close": "关闭",
+  "detail.remote_note": "源站实时结果 · 尚未入库",
+  "detail.fact.options": "{count} 项功能",
+  "detail.fact.unknown": "详情见原站",
+  "source.live": "实时",
+  "search.remote.loading": "正在联网搜索…",
+  "search.remote.offline": "联网搜索不可用，仅显示本地结果",
+  "downloads.filter.all": "全部",
+  "downloads.filter.active": "进行中",
+  "downloads.filter.done": "已完成"
 }

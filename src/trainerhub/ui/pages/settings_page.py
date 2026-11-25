@@ -25,7 +25,6 @@ from ..widgets.common import HeaderBar, NoticeBox, SectionTitle
 
 
 class SettingsPage(QWidget):
-    theme_changed = Signal(str)
     language_changed = Signal(str)
     library_changed = Signal(str)
     sources_changed = Signal()
@@ -38,7 +37,7 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(HeaderBar(tr("settings.title"), tr("app.tagline")))
+        layout.addWidget(HeaderBar(tr("settings.title")))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -90,13 +89,6 @@ class SettingsPage(QWidget):
     # -- cards ------------------------------------------------------------
     def _general_card(self) -> QFrame:
         frame, layout = self._card(tr("settings.section.general"))
-
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItem(tr("settings.theme.dark"), "dark")
-        self.theme_combo.addItem(tr("settings.theme.light"), "light")
-        self.theme_combo.setCurrentIndex(0 if self.config.theme == "dark" else 1)
-        self.theme_combo.currentIndexChanged.connect(self._on_theme)
-        layout.addWidget(self._row("settings.theme", self.theme_combo))
 
         self.language_combo = QComboBox()
         self.language_combo.addItem("简体中文", "zh_CN")
@@ -198,7 +190,7 @@ class SettingsPage(QWidget):
         version.setObjectName("FieldHint")
         layout.addWidget(version)
 
-        link = QLabel(f'<a href="{HOMEPAGE}" style="color:#4E8CFF;text-decoration:none;">{HOMEPAGE}</a>')
+        link = QLabel(f'<a href="{HOMEPAGE}" style="color:#191817;text-decoration:none;">{HOMEPAGE}</a>')
         link.setOpenExternalLinks(True)
         layout.addWidget(link)
 
@@ -208,11 +200,6 @@ class SettingsPage(QWidget):
         return frame
 
     # -- handlers ---------------------------------------------------------
-    def _on_theme(self) -> None:
-        theme = self.theme_combo.currentData()
-        self.config.set("theme", theme)
-        self.theme_changed.emit(theme)
-
     def _on_language(self) -> None:
         language = self.language_combo.currentData()
         if language == self.config.language:
