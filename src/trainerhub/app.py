@@ -70,6 +70,10 @@ class TrainerHubApp:
 
     # -- lifecycle --------------------------------------------------------
     def run(self) -> int:
+        if os.environ.get("TRAINERHUB_SMOKE_TEST"):
+            # Packaging smoke test: no first-run wizard, no network sync.
+            self.config.set("first_run", False, save=False)
+            self.config.set("ui.sync_on_start", False, save=False)
         if self.config.get("first_run", True):
             wizard = WelcomeWizard(self.config)
             if wizard.exec() != WelcomeWizard.DialogCode.Accepted:

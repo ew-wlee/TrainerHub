@@ -32,9 +32,22 @@ jobs:
 
       - name: Smoke test the executable
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          TRAINERHUB_SMOKE_TEST: "1"
         run: |
           if (-not (Test-Path "dist/TrainerHub.exe")) { throw "TrainerHub.exe was not produced" }
           Get-Item "dist/TrainerHub.exe" | Format-List Name, Length
+
+          # Boot the bundled UI offscreen and let the app exit itself. A missing
+          # Qt plugin or resource fails here instead of on a reviewer's machine.
+          $process = Start-Process -FilePath "dist/TrainerHub.exe" -PassThru
+          if (-not $process.WaitForExit(90000)) {
+            $process.Kill()
+            throw "TrainerHub.exe did not exit within 90s — UI failed to start"
+          }
+          if ($process.ExitCode -ne 0) { throw "TrainerHub.exe exited with code $($process.ExitCode)" }
+          Write-Host "TrainerHub.exe booted and exited cleanly"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

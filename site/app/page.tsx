@@ -219,7 +219,7 @@ export default function Page() {
 
           <p className="mt-4 text-xs text-mist-600">
             Single self-contained <code className="font-mono text-mist-400">TrainerHub.exe</code> ·
-            ~40 MB · no installer, no admin rights
+            ~60 MB · no installer, no admin rights
           </p>
         </div>
 
