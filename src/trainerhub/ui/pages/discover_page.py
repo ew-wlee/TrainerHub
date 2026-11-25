@@ -25,6 +25,8 @@ class DiscoverPage(QWidget):
     download_requested = Signal(object)
     open_page_requested = Signal(object)
     open_folder_requested = Signal(object)
+    run_requested = Signal(object)
+    delete_requested = Signal(object)
     sync_requested = Signal()
     selection_changed = Signal(object)
     closed = Signal()
@@ -115,6 +117,7 @@ class DiscoverPage(QWidget):
         self.view.setModel(self.model)
         self.view.setItemDelegate(self.delegate)
         self.view.setEditTriggers(TrainerListView.EditTrigger.NoEditTriggers)
+        self.view.action_requested.connect(self._on_row_action)
         self.view.doubleClicked.connect(self._on_double_click)
         self.view.selectionModel().currentChanged.connect(self._on_current_changed)
 
@@ -163,6 +166,17 @@ class DiscoverPage(QWidget):
     def set_installed_keys(self, keys: set[tuple[str, str]]) -> None:
         self.delegate.set_installed_keys(keys)
         self.view.viewport().update()
+
+    def set_job_state(self, key: tuple[str, str], state: str) -> None:
+        self.delegate._job_states[key] = state
+        if state not in {"queued", "resolving", "downloading", "extracting", "installing"}:
+            self.delegate._job_progress.pop(key, None)
+        self.view.viewport().update()
+
+    def set_job_progress(self, key: tuple[str, str], received: int, total: int) -> None:
+        if total > 0:
+            self.delegate._job_progress[key] = max(0, min(100, received * 100 // total))
+            self.view.viewport().update()
 
     # -- data -------------------------------------------------------------
     def set_items(self, items: list[CatalogItem]) -> None:
@@ -308,8 +322,35 @@ class DiscoverPage(QWidget):
     def _on_double_click(self, index) -> None:
         item = self.model.item_at(index.row())
         if item is not None:
+            if item.key in self.delegate._installed_keys:
+                self.run_requested.emit(item)
+                return
             entry = self.model.entry_at(index.row())
             if entry is not None and entry.action == "external":
                 self.open_page_requested.emit(item)
             elif entry is None or entry.state in {"ready", "failed", "cancelled"}:
+                self.download_requested.emit(item)
+
+    def _on_row_action(self, index, action: str) -> None:
+        item = self.model.item_at(index.row())
+        if item is None:
+            return
+        entry = self.model.entry_at(index.row())
+        installed = item.key in self.delegate._installed_keys
+        state = self.delegate._job_states.get(item.key, entry.state if entry else "ready")
+        if action == "first":
+            if installed:
+                self.run_requested.emit(item)
+            elif self.view.currentIndex() == index:
+                self.selection_changed.emit(item)
+            else:
+                self.view.setCurrentIndex(index)
+        elif installed and action in {"second", "delete"}:
+            self.delete_requested.emit(item)
+        elif not installed and action in {"second", "download"} and state not in {
+            "queued", "resolving", "downloading", "extracting", "installing"
+        }:
+            if entry is not None and entry.action == "external":
+                self.open_page_requested.emit(item)
+            else:
                 self.download_requested.emit(item)

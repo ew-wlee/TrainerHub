@@ -136,7 +136,7 @@ class LibraryService:
         if remove_files:
             path = Path(record.path)
             if path.exists() and path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
+                shutil.rmtree(path)
         self.db.installed_delete(record.source_id, record.remote_id)
 
     # -- import -----------------------------------------------------------

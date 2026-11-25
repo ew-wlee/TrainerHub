@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QEasingCurve,
+    QModelIndex,
+    QPoint,
+    QRect,
+    QSize,
+    Qt,
+    QVariantAnimation,
+    Signal,
+)
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +26,7 @@ from PySide6.QtWidgets import (
 from ...core.models import CatalogItem, RecommendationEntry
 from ...i18n import tr
 from .. import theme as theme_tokens
+from ..motion import animations_enabled
 
 ITEM_ROLE = Qt.ItemDataRole.UserRole + 1
 ENTRY_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -110,6 +121,8 @@ class TrainerDelegate(QStyledItemDelegate):
         self._source_names: dict[str, str] = {}
         self._installed_keys: set[tuple[str, str]] = set()
         self._remote_keys: set[tuple[str, str]] = set()
+        self._job_states: dict[tuple[str, str], str] = {}
+        self._job_progress: dict[tuple[str, str], int] = {}
 
     def set_theme(self, theme: str) -> None:
         self.theme = theme
@@ -160,24 +173,35 @@ class TrainerDelegate(QStyledItemDelegate):
                 check.state |= QStyle.StateFlag.State_Enabled
             QApplication.style().drawControl(QStyle.ControlElement.CE_CheckBox, check, painter)
             left += 30
-        state = entry.state if entry is not None else ""
+        state = self._job_states.get(item.key, entry.state if entry is not None else "")
         if item.key in self._installed_keys:
             state = "installed"
-        if state and state != "ready":
-            label = tr("discovery.installed") if state in {"installed", "done"} else tr(f"state.{state}")
-            painter.setPen(theme_tokens.color(self.theme, "dim"))
-            painter.drawText(QRect(right - 86, rect.top(), 86, rect.height()),
-                             int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), label)
-            right -= 98
-
-        details_rect = QRect(rect.right() - 142, rect.center().y() - 16, 60, 32)
-        download_rect = QRect(rect.right() - 76, rect.center().y() - 16, 60, 32)
-        for button_rect, text, primary in ((details_rect, tr("action.details"), False),
-                                           (download_rect, tr("action.download_short"), True)):
+        active = state in {"queued", "resolving", "downloading", "extracting", "installing"}
+        first_text = tr("action.open_short") if state == "installed" else tr("action.details")
+        second_text = tr("action.delete") if state == "installed" else tr("action.download_short")
+        if active:
+            percent = self._job_progress.get(item.key)
+            second_text = f"{percent}%" if state == "downloading" and percent is not None else tr(f"state.{state}")
+        details_rect, download_rect = self.owner.view.action_rects(rect)
+        for button_rect, text, primary in ((details_rect, first_text, False),
+                                           (download_rect, second_text, state != "installed")):
             painter.setPen(theme_tokens.color(self.theme, "line_strong") if not primary else Qt.PenStyle.NoPen)
-            painter.setBrush(theme_tokens.color(self.theme, "primary" if primary else "surface"))
+            color = "sunken" if active and primary else ("primary" if primary else "surface")
+            pressed = self.owner.view._action_press
+            view = self.owner.view
+            is_first = button_rect == details_rect
+            feedback = view._feedback_key == item.key and (view._feedback_action == "first") == is_first
+            if pressed and pressed[0] == index and ((pressed[1] == "first") == is_first):
+                color = "primary_deep" if primary else "sunken"
+            base = theme_tokens.color(self.theme, color)
+            if feedback and not pressed:
+                dark = theme_tokens.color(self.theme, "primary_deep" if primary else "sunken")
+                amount = float(view._feedback.currentValue() or 0)
+                base = QColor.fromRgbF(*(base.getRgbF()[i] * (1 - amount) + dark.getRgbF()[i] * amount
+                                         for i in range(3)))
+            painter.setBrush(base)
             painter.drawRoundedRect(button_rect, 7, 7)
-            painter.setPen(QColor("#FFFFFF") if primary else theme_tokens.color(self.theme, "text"))
+            painter.setPen(QColor("#FFFFFF") if primary and not active else theme_tokens.color(self.theme, "text"))
             painter.drawText(button_rect, int(Qt.AlignmentFlag.AlignCenter), text)
         right = min(right, details_rect.left() - 12)
 
@@ -196,41 +220,15 @@ class TrainerDelegate(QStyledItemDelegate):
 
         painter.restore()
 
-    def editorEvent(self, event, model, option, index) -> bool:  # noqa: N802
-        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
-            rect = option.rect
-            position = event.position().toPoint()
-            if QRect(rect.right() - 142, rect.center().y() - 16, 60, 32).contains(position):
-                self.owner.view.setCurrentIndex(index)
-                return True
-            if QRect(rect.right() - 76, rect.center().y() - 16, 60, 32).contains(position):
-                item = index.data(ITEM_ROLE)
-                entry = index.data(ENTRY_ROLE)
-                if item is not None and (entry is None or entry.state in SELECTABLE):
-                    if entry is not None and entry.action == "external":
-                        self.owner.open_page_requested.emit(item)
-                    else:
-                        self.owner.download_requested.emit(item)
-                return True
-        if not index.flags() & Qt.ItemFlag.ItemIsUserCheckable:
-            return False
-        toggle = False
-        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
-            toggle = QRect(option.rect.left() + 14, option.rect.top(), 28, option.rect.height()).contains(event.position().toPoint())
-        elif event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Space:
-            toggle = True
-        if toggle:
-            checked = index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
-            return model.setData(index, Qt.CheckState.Unchecked if checked else Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
-        return False
-
-
 class TrainerListView(QListView):
     """Adds reliable hover tracking on top of QListView."""
+
+    action_requested = Signal(object, str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("TrainerList")
+        self.setAccessibleDescription(tr("discover.keyboard_help"))
         self.hover_row = -1
         self.setMouseTracking(True)
         self.setUniformItemSizes(True)
@@ -239,9 +237,30 @@ class TrainerListView(QListView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSpacing(0)
         self.setFrameShape(QListView.Shape.NoFrame)
+        self._action_press = None
+        self._feedback_key = None
+        self._feedback_action = ""
+        self._feedback = QVariantAnimation(self)
+        self._feedback.setDuration(120)
+        self._feedback.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._feedback.valueChanged.connect(lambda _: self.viewport().update())
+
+    @staticmethod
+    def action_rects(rect: QRect) -> tuple[QRect, QRect]:
+        return (QRect(rect.right() - 160, rect.center().y() - 16, 68, 32),
+                QRect(rect.right() - 84, rect.center().y() - 16, 68, 32))
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         index = self.indexAt(event.position().toPoint())
+        if event.button() == Qt.MouseButton.LeftButton and index.isValid():
+            for action, rect in zip(("first", "second"), self.action_rects(self.visualRect(index)), strict=True):
+                if rect.contains(event.position().toPoint()):
+                    self._feedback.stop()
+                    self._feedback_key = None
+                    self._action_press = (index, action)
+                    self.viewport().update()
+                    event.accept()
+                    return
         if (event.button() == Qt.MouseButton.LeftButton and index.isValid()
                 and index.data(ENTRY_ROLE) is not None
                 and event.position().x() < 44):
@@ -252,6 +271,23 @@ class TrainerListView(QListView):
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if self._action_press is not None:
+            index, action = self._action_press
+            self._action_press = None
+            rects = self.action_rects(self.visualRect(index))
+            target = rects[0 if action == "first" else 1]
+            if index == self.indexAt(event.position().toPoint()) and target.contains(event.position().toPoint()):
+                item = index.data(ITEM_ROLE)
+                if item is not None and animations_enabled():
+                    self._feedback_key = item.key
+                    self._feedback_action = action
+                    self._feedback.setStartValue(1.0)
+                    self._feedback.setEndValue(0.0)
+                    self._feedback.start()
+                self.action_requested.emit(index, action)
+            self.viewport().update()
+            event.accept()
+            return
         index = getattr(self, "_check_press", None)
         if index is not None:
             self._check_press = None
@@ -263,6 +299,16 @@ class TrainerListView(QListView):
             return
         super().mouseReleaseEvent(event)
 
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        index = self.currentIndex()
+        if index.isValid() and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Delete, Qt.Key.Key_D):
+            action = ("first" if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                      else "delete" if event.key() == Qt.Key.Key_Delete else "download")
+            self.action_requested.emit(index, action)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         index = self.indexAt(event.position().toPoint())
         row = index.row() if index.isValid() else -1
@@ -270,6 +316,14 @@ class TrainerListView(QListView):
             self.hover_row = row
             self.viewport().update()
         super().mouseMoveEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        index = self.indexAt(event.position().toPoint())
+        if index.isValid() and any(rect.contains(event.position().toPoint())
+                                   for rect in self.action_rects(self.visualRect(index))):
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def leaveEvent(self, event) -> None:  # noqa: N802
         if self.hover_row != -1:

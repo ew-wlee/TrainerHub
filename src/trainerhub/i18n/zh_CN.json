@@ -192,5 +192,10 @@
   "discovery.summary.count": "已从 Steam 游戏中找到 {count} 个修改器。",
   "action.details": "详情",
   "action.download_short": "下载",
-  "library.added": "已添加"
+  "library.added": "已添加",
+  "action.open_short": "打开",
+  "dialog.run.missing": "这个文件夹中没有找到可运行的修改器。",
+  "dialog.run.failed": "修改器启动失败，请检查文件是否可用。",
+  "dialog.delete.failed": "删除失败，修改器仍保留在库中。\n{reason}",
+  "discover.keyboard_help": "选择游戏后，按回车打开详情或运行修改器，按 D 下载，按 Delete 删除已安装的修改器。"
 }

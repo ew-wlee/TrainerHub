@@ -547,7 +547,8 @@ def test_downloads_in_library_hide_completed_and_offer_retry(window):
     QTest.mouseClick(row.retry_button, Qt.MouseButton.LeftButton)
     assert len(window.download_worker.queued) == 2
     window._on_job_state(job_id, "done", "")
-    assert window.downloads.isHidden()
+    assert not window.downloads.isHidden()
+    wait_until(window.downloads.isHidden)
 
 
 def test_welcome_sources_default_selected_without_changing_existing_settings(app, tmp_path):
@@ -560,3 +561,152 @@ def test_welcome_sources_default_selected_without_changing_existing_settings(app
     wizard._apply()
     assert all(config.source_enabled(source) for source in ("fling", "xiaoxing", "custom"))
     assert config.get("sources.custom.index_url") == ""
+
+
+def click_row_action(window, side):
+    view = window.discover.view
+    rect = view.visual_rect_for_row(0)
+    target = view.action_rects(rect)[0 if side == "first" else 1]
+    QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=target.center())
+    QApplication.processEvents()
+
+
+def test_row_buttons_work_for_uninstalled_and_in_progress(window):
+    entry = RecommendationEntry(game(), item(), "high", "Exact")
+    install_plan(window, [entry])
+    click_row_action(window, "first")
+    assert window.discover.detail.isVisible()
+    click_row_action(window, "second")
+    assert window.download_worker.queued == [entry.item]
+    window._switch_page("discover")
+    click_row_action(window, "second")
+    assert window.download_worker.queued == [entry.item]
+
+
+def test_installed_row_run_delete_cancel_and_reinstall(window, tmp_path, monkeypatch):
+    trainer = item()
+    folder = tmp_path / "trainers" / "installed"
+    folder.mkdir(parents=True)
+    (folder / "trainer.exe").write_bytes(b"test")
+    record = InstalledItem("fling", "elden-ring", "Elden Ring", "1", str(folder))
+    window.library.db.installed_upsert(record)
+    entry = RecommendationEntry(game(), trainer, "high", "Exact", state="installed")
+    install_plan(window, [entry])
+    window._refresh_library()
+    calls = []
+    monkeypatch.setattr(window, "_run_trainer", lambda value: calls.append(value.key))
+    click_row_action(window, "first")
+    assert calls == [trainer.key]
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.StandardButton.Cancel)
+    click_row_action(window, "second")
+    assert window.library.installed(trainer) is not None and folder.exists()
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.StandardButton.Yes)
+    click_row_action(window, "second")
+    assert window.library.installed(trainer) is None and not folder.exists()
+    assert trainer.key not in window.discover.delegate._installed_keys
+    click_row_action(window, "second")
+    assert window.download_worker.queued == [trainer]
+
+
+def test_search_row_keyboard_open_and_delete(window, tmp_path, monkeypatch):
+    trainer = item()
+    folder = tmp_path / "trainer"
+    folder.mkdir()
+    record = InstalledItem("fling", "elden-ring", "Elden Ring", "1", str(folder))
+    window.library.db.installed_upsert(record)
+    window.items = [trainer]
+    window.search.rebuild([trainer])
+    window.search_box.setText("Elden")
+    window._search_timer.stop()
+    window._remote_timer.stop()
+    window._run_search()
+    index = window.discover.model.index(0, 0)
+    window.discover.view.setCurrentIndex(index)
+    calls = []
+    monkeypatch.setattr(window, "_run_trainer", lambda value: calls.append(value.key))
+    QTest.keyClick(window.discover.view, Qt.Key.Key_Return)
+    assert calls == [trainer.key]
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.StandardButton.Yes)
+    QTest.keyClick(window.discover.view, Qt.Key.Key_Delete)
+    assert window.library.installed(trainer) is None
+
+
+def test_run_trainer_starts_without_confirmation(window, tmp_path, monkeypatch):
+    from PySide6.QtCore import QProcess
+
+    folder = tmp_path / "run"
+    folder.mkdir()
+    target = folder / "trainer.exe"
+    target.write_bytes(b"not executed")
+    record = InstalledItem("fling", "x", "Game", "1", str(folder))
+    called = []
+    monkeypatch.setattr(QProcess, "startDetached", lambda *args: (called.append(args) or (True, 123)))
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: pytest.fail("unexpected confirmation"))
+    window._run_trainer(record)
+    assert called == [(str(target), [], str(folder))]
+
+
+def test_progress_animation_retargets_and_respects_reduced_motion(window, monkeypatch):
+    from trainerhub.ui.pages import downloads_page
+
+    monkeypatch.setattr(downloads_page, "animations_enabled", lambda: False)
+    window._enqueue_download(item())
+    row = window.downloads._rows["fling:elden-ring"]
+    row.set_progress(1, 2)
+    assert row.progress.value() == 500
+    monkeypatch.setattr(downloads_page, "animations_enabled", lambda: True)
+    row.set_progress(6, 10)
+    row.set_progress(9, 10)
+    assert row._progress_animation.endValue() == 900
+    QTest.qWait(200)
+    assert row.progress.value() == 900
+    window._on_job_state("fling:elden-ring", "cancelled", "")
+    assert window.downloads.isHidden()
+
+
+def test_run_reports_missing_or_failed_executable(window, tmp_path, monkeypatch):
+    from PySide6.QtCore import QProcess
+
+    folder = tmp_path / "run"
+    folder.mkdir()
+    record = InstalledItem("fling", "x", "Game", "1", str(folder))
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: warnings.append(args[2]))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args[2]))
+    window._run_trainer(record)
+    assert len(warnings) == 1
+    (folder / "trainer.exe").write_bytes(b"not executed")
+    monkeypatch.setattr(QProcess, "startDetached", lambda *args: (False, 0))
+    window._run_trainer(record)
+    assert len(warnings) == 2
+
+
+def test_completion_timer_does_not_hide_a_restarted_download(window):
+    trainer = item()
+    window._enqueue_download(trainer)
+    job_id = "fling:elden-ring"
+    window._on_job_state(job_id, "done", "")
+    window.downloads.add_job(job_id, trainer, "FLiNG")
+    QTest.qWait(700)
+    assert window.downloads._rows[job_id].state == "queued"
+    assert not window.downloads.isHidden()
+
+
+def test_delete_failure_keeps_installed_record(window, tmp_path, monkeypatch):
+    trainer = item()
+    folder = tmp_path / "trainer"
+    folder.mkdir()
+    record = InstalledItem("fling", "elden-ring", "Elden Ring", "1", str(folder))
+    window.library.db.installed_upsert(record)
+    entry = RecommendationEntry(game(), trainer, "high", "Exact", state="installed")
+    install_plan(window, [entry])
+    window._refresh_library()
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    def fail_delete(*args, **kwargs):
+        raise OSError("locked")
+    monkeypatch.setattr("trainerhub.core.library.shutil.rmtree", fail_delete)
+    click_row_action(window, "second")
+    assert window.library.installed(trainer) is not None
+    assert folder.exists()
+    assert trainer.key in window.discover.delegate._installed_keys

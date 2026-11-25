@@ -54,7 +54,7 @@ class InstalledRow(QFrame):
 
         if sys.platform.startswith("win"):
             run_button = QPushButton(tr("action.run"))
-            run_button.setObjectName("LinkButton")
+            run_button.setObjectName("RunButton")
             run_button.setCursor(Qt.CursorShape.PointingHandCursor)
             run_button.clicked.connect(lambda: self.run_requested.emit(self.record))
             actions_layout.addWidget(run_button)

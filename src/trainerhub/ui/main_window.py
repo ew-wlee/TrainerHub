@@ -215,6 +215,8 @@ class MainWindow(QMainWindow):
         self.discover.download_requested.connect(self._enqueue_download)
         self.discover.open_page_requested.connect(self._open_page)
         self.discover.open_folder_requested.connect(self._open_folder)
+        self.discover.run_requested.connect(self._run_catalog_item)
+        self.discover.delete_requested.connect(self._delete_catalog_item)
         self.discover.sync_requested.connect(self.start_sync)
         self.discover.closed.connect(self._on_inspector_closed)
         controller = self.discovery_controller
@@ -254,6 +256,7 @@ class MainWindow(QMainWindow):
         if self.download_worker is not None:
             self.download_worker.job_state.connect(self._on_job_state)
             self.download_worker.job_progress.connect(self.downloads.update_progress)
+            self.download_worker.job_progress.connect(self._on_job_progress)
             self.download_worker.job_done.connect(self._on_job_done)
             self.download_worker.job_failed.connect(self._on_job_failed)
             self.download_worker.job_external.connect(self._on_job_external)
@@ -630,6 +633,7 @@ class MainWindow(QMainWindow):
             self.discover.set_remote_keys(set(self._remote_items.keys()))
 
         self._active_jobs.add(job_id)
+        self.discover.set_job_state(item.key, "queued")
         self._external_jobs.discard(job_id)
         self.discovery_controller.update_job(item.key, "queued")
         self.downloads.add_job(job_id, item, tr(SOURCE_LABEL_KEYS.get(item.source_id, item.source_id)))
@@ -644,16 +648,23 @@ class MainWindow(QMainWindow):
 
     def _on_job_state(self, job_id: str, state: str, message: str) -> None:
         self.downloads.update_state(job_id, state, message)
+        key = tuple(job_id.split(":", 1))
+        if len(key) == 2:
+            self.discover.set_job_state(key, state)
         if state in ACTIVE_STATES:
             self._active_jobs.add(job_id)
         else:
             self._active_jobs.discard(job_id)
-        key = tuple(job_id.split(":", 1))
         if len(key) == 2:
             if message == "external" or job_id in self._external_jobs:
                 self.discovery_controller.external(key)
             else:
                 self.discovery_controller.update_job(key, state)
+
+    def _on_job_progress(self, job_id: str, received: int, total: int) -> None:
+        key = tuple(job_id.split(":", 1))
+        if len(key) == 2:
+            self.discover.set_job_progress(key, received, total)
 
     def _on_job_done(self, record: InstalledItem) -> None:
         self._active_jobs.discard(f"{record.source_id}:{record.remote_id}")
@@ -713,18 +724,22 @@ class MainWindow(QMainWindow):
         folder = Path(record.path)
         executables = sorted(folder.glob("*.exe"))
         if not executables:
-            QMessageBox.information(self, tr("dialog.run.title"), "No .exe found in this folder.")
+            QMessageBox.information(self, tr("dialog.run.title"), tr("dialog.run.missing"))
             return
         target = executables[0]
-        box = QMessageBox(self)
-        box.setWindowTitle(tr("dialog.run.title"))
-        box.setText(tr("dialog.run.body", name=f"{record.game_name} · {target.name}"))
-        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        if box.exec() != QMessageBox.StandardButton.Ok:
-            return
         started, _pid = QProcess.startDetached(str(target), [], str(folder))
         if not started:
-            QMessageBox.warning(self, tr("dialog.run.title"), "Failed to start the trainer.")
+            QMessageBox.warning(self, tr("dialog.run.title"), tr("dialog.run.failed"))
+
+    def _run_catalog_item(self, item: CatalogItem) -> None:
+        record = self.library.installed(item)
+        if record is not None:
+            self._run_trainer(record)
+
+    def _delete_catalog_item(self, item: CatalogItem) -> None:
+        record = self.library.installed(item)
+        if record is not None:
+            self._delete_record(record)
 
     def _delete_record(self, record: InstalledItem) -> None:
         box = QMessageBox(self)
@@ -733,7 +748,12 @@ class MainWindow(QMainWindow):
         box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         if box.exec() != QMessageBox.StandardButton.Yes:
             return
-        self.library.delete(record)
+        try:
+            self.library.delete(record)
+        except OSError as exc:
+            QMessageBox.warning(self, tr("dialog.delete.title"), tr("dialog.delete.failed", reason=str(exc)))
+            return
+        self.discover.set_job_state(record.key, "ready")
         self.discovery_controller.forget_job(record.key)
         self._refresh_library()
         if self._current is not None and self._current.key == record.key:

@@ -479,9 +479,9 @@ QCheckBox::indicator:checked {
 QProgressBar {
     background-color: @line;
     border: none;
-    border-radius: 0;
-    max-height: 2px;
-    min-height: 2px;
+    border-radius: 2px;
+    max-height: 4px;
+    min-height: 4px;
     text-align: center;
     color: transparent;
 }
@@ -627,6 +627,8 @@ QListWidget::item:selected {
 
 #SideRail { background-color: #F0EFE9; }
 #DiscoverySummary { background-color: #E9EEE6; border: 1px solid #DDE5DA; border-radius: 12px; }
+QPushButton#RunButton { background-color: @primary; color: white; border: none; border-radius: 7px; padding: 0 14px; min-height: 32px; font-weight: 600; }
+QPushButton#RunButton:hover, QPushButton#RunButton:pressed { background-color: @primary_deep; }
 #DiscoveryToolbar { background: transparent; border: none; }
 QPushButton#NavButton[active="true"] { background-color: #DEE3D9; color: #253D2D; }
 QPushButton:focus, QLineEdit:focus, QListView:focus { border: 1px solid #839F88; }

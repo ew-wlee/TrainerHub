@@ -192,5 +192,10 @@
   "discovery.summary.count": "Found {count} trainers for your Steam games.",
   "action.details": "Details",
   "action.download_short": "Get",
-  "library.added": "Added"
+  "library.added": "Added",
+  "action.open_short": "Open",
+  "dialog.run.missing": "No trainer executable was found in this folder.",
+  "dialog.run.failed": "Could not start the trainer. Check that the file is available.",
+  "dialog.delete.failed": "Could not delete the trainer; it remains in your library.\n{reason}",
+  "discover.keyboard_help": "Select a game, then press Enter for details or to run, D to download, or Delete to remove an installed trainer."
 }

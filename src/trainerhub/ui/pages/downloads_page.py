@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from ...core.models import CatalogItem
 from ...i18n import tr
+from ..motion import animations_enabled
 from ..widgets.common import ElidedLabel, repolish
 
 ACTIVE_STATES = {"queued", "resolving", "downloading", "extracting", "installing"}
@@ -45,6 +46,9 @@ class DownloadRow(QFrame):
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
         self.progress.setFixedWidth(200)
+        self._progress_animation = QPropertyAnimation(self.progress, b"value", self)
+        self._progress_animation.setDuration(150)
+        self._progress_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self.percent = QLabel("0%")
         self.percent.setObjectName("TaskPercent")
@@ -84,8 +88,10 @@ class DownloadRow(QFrame):
         repolish(self.progress)
 
         if state == "done":
-            self.progress.setValue(1000)
+            self._set_progress_value(1000)
             self.percent.setText("100%")
+        elif state in {"failed", "cancelled"}:
+            self._progress_animation.stop()
         self.cancel_button.setVisible(state in ACTIVE_STATES)
         self.retry_button.setVisible(state == "failed")
         self.status.setToolTip(message)
@@ -94,9 +100,18 @@ class DownloadRow(QFrame):
 
     def set_progress(self, received: int, total: int) -> None:
         if total > 0:
-            value = int(received / total * 1000)
-            self.progress.setValue(value)
+            value = max(0, min(1000, int(received / total * 1000)))
+            self._set_progress_value(value)
             self.percent.setText(f"{value // 10}%")
+
+    def _set_progress_value(self, value: int) -> None:
+        self._progress_animation.stop()
+        if not animations_enabled() or not self.isVisible() or value < self.progress.value():
+            self.progress.setValue(value)
+            return
+        self._progress_animation.setStartValue(self.progress.value())
+        self._progress_animation.setEndValue(value)
+        self._progress_animation.start()
 
 
 class DownloadsPage(QWidget):
@@ -108,6 +123,7 @@ class DownloadsPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._rows: dict[str, DownloadRow] = {}
+        self._completion_timers: dict[str, QTimer] = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 6, 18, 8)
         layout.setSpacing(4)
@@ -128,6 +144,8 @@ class DownloadsPage(QWidget):
         self.hide()
 
     def add_job(self, job_id: str, item: CatalogItem, source_name: str) -> None:
+        if job_id in self._completion_timers:
+            self._completion_timers[job_id].stop()
         row = self._rows.get(job_id)
         if row is None:
             row = DownloadRow(job_id, item, source_name)
@@ -144,7 +162,23 @@ class DownloadsPage(QWidget):
     def update_state(self, job_id: str, state: str, message: str = "") -> None:
         row = self._rows.get(job_id)
         if row:
+            timer = self._completion_timers.get(job_id)
+            if timer:
+                timer.stop()
             row.set_state(state, message)
+            if state == "done":
+                if timer is None:
+                    timer = QTimer(self)
+                    timer.setSingleShot(True)
+                    timer.timeout.connect(lambda current=job_id: self._finish_completion(current))
+                    self._completion_timers[job_id] = timer
+                timer.start(650)
+            self._apply_filter()
+
+    def _finish_completion(self, job_id: str) -> None:
+        row = self._rows.get(job_id)
+        if row and row.state == "done":
+            row.state = "completed"
             self._apply_filter()
 
     def update_progress(self, job_id: str, received: int, total: int) -> None:
@@ -155,7 +189,7 @@ class DownloadsPage(QWidget):
     def _apply_filter(self) -> None:
         visible = 0
         for row in self._rows.values():
-            matched = row.state in ACTIVE_STATES or row.state == "failed"
+            matched = row.state in ACTIVE_STATES or row.state in {"failed", "done"}
             row.setVisible(matched)
             visible += int(matched)
         self.scroll.setFixedHeight(min(visible * 56 + 2, 130))
