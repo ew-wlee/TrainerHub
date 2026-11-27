@@ -13,6 +13,7 @@ from .common import repolish
 NAV_ITEMS = (
     ("discover", "nav.discover"),
     ("library", "nav.library"),
+    ("mods", "nav.mods"),
 )
 
 
