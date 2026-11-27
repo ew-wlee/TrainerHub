@@ -5,6 +5,7 @@ The script never connects to the network or opens the user's TrainerHub data.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -18,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from PySide6.QtCore import QCoreApplication, QEvent  # noqa: E402
 from PySide6.QtGui import QFontDatabase  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from trainerhub.core.config import Config  # noqa: E402
@@ -30,6 +32,7 @@ from trainerhub.core.models import (  # noqa: E402
     RecommendationPlan,
     SteamGame,
 )
+from trainerhub.core.mods import ModService  # noqa: E402
 from trainerhub.core.search import SearchEngine  # noqa: E402
 from trainerhub.i18n import set_language  # noqa: E402
 from trainerhub.ui.main_window import MainWindow  # noqa: E402
@@ -90,10 +93,44 @@ def render(language: str, base: Path, app: QApplication) -> None:
     window.downloads.update_progress("fling:2", 620, 1000)
     settle(app)
     assert window.grab().save(str(OUTPUT / f"library-{language}.png"))
+    render_mods(window, language, base, app)
     window.cleanup()
     window.close()
     settle(app)
     db.close()
+
+
+def render_mods(window: MainWindow, language: str, base: Path, app: QApplication) -> None:
+    """Use real file operations on isolated examples, never the user's games."""
+    chinese = language == "zh_CN"
+    library = base / "Steam"
+    root = library / "steamapps/common/ExampleGame"
+    root.mkdir(parents=True)
+    game = SteamGame("123456", "Steam 示例游戏" if chinese else "Example Steam game", str(library), str(root))
+    examples = [
+        ("modExampleHUD", "界面精简（示例）" if chinese else "HUD layout (example)", "1.2"),
+        ("modExampleTextures", "环境纹理（示例）" if chinese else "Textures (example)", "2.0"),
+        ("modUnreviewed", "待核对内容（示例）" if chinese else "Unreviewed content (example)", "0.9"),
+    ]
+    for directory, name, version in examples:
+        folder = root / "Mods" / directory
+        (folder / "content").mkdir(parents=True)
+        (folder / "content/example.bin").write_bytes(b"README example, not a real Mod")
+        (folder / "manifest.json").write_text(json.dumps({"Name": name, "Version": version}, ensure_ascii=False), encoding="utf-8")
+    service = ModService(base / "Mods", running=lambda _: False)
+    report = service.scan([game])
+    for record in report.records:
+        if record.reason == "unconfirmed" and record.entries != ["modUnreviewed"]:
+            service.confirm(record.id)
+    textures = next(record for record in service.read().records if record.entries == ["modExampleTextures"])
+    report = service.toggle([textures.id], False)
+    window.mods_page.controller.initialized = True
+    window.mods_page.controller.report = report
+    window.mods_page.set_report(report)
+    window._switch_page("mods")
+    QTest.qWait(220)  # Let the native search clear-button fade finish before capture.
+    settle(app)
+    assert window.grab().save(str(OUTPUT / f"mods-{language}.png"))
 
 
 def main() -> None:
@@ -103,7 +140,10 @@ def main() -> None:
             QFontDatabase.addApplicationFont(str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / name))
     apply(app)
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="trainerhub-readme-") as temporary:
+    cache = ROOT / ".pytest_cache"
+    cache.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="readme-", dir=cache) as temporary:
+        assert Path(temporary).resolve().is_relative_to(cache.resolve())
         for language in ("zh_CN", "en_US"):
             folder = Path(temporary) / language
             folder.mkdir()

@@ -109,6 +109,31 @@ def test_first_screen_is_one_title_and_scan_button(window):
     assert not window.config.get("discovery.scan_on_start")
 
 
+def test_mod_tab_extends_navigation_without_restyling_original_pages(window, monkeypatch):
+    from trainerhub.i18n import tr
+    from trainerhub.ui.theme import stylesheet
+
+    before_style = QApplication.instance().styleSheet()
+    before_size = window.discover.size()
+    monkeypatch.setattr(window.mods_page, "initialize", lambda: None)
+    window._switch_page("mods")
+    assert window.stack.currentWidget() is window.mods_page
+    assert window.brand.text() == tr("nav.mods")
+    assert not window.sync_button.isVisible()
+    assert window.rail.width() == 188
+    assert window.size().width() == 1024
+    window.search_box.setText("texture")
+    assert window.mods_page._query == "texture"
+    assert not window._remote_timer.isActive()
+    window._switch_page("discover")
+    assert window.stack.currentWidget() is window.discover
+    assert window.brand.text() == tr("nav.discover")
+    assert window.sync_button.isVisible()
+    assert QApplication.instance().styleSheet() == before_style
+    assert window.discover.size() == before_size
+    assert "ModTable" not in stylesheet()
+
+
 def test_checkbox_does_not_open_inspector_or_enqueue(window):
     entry = RecommendationEntry(game(), item(), "medium", "Local alias")
     install_plan(window, [entry])

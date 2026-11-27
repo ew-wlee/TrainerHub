@@ -42,6 +42,7 @@ from .discovery_controller import ACTIVE_STATES, DiscoveryController
 from .pages.discover_page import DiscoverPage
 from .pages.downloads_page import DownloadsPage
 from .pages.library_page import LibraryPage
+from .pages.mods_page import ModsPage
 from .pages.settings_page import SettingsPage
 from .widgets.source_rail import SourceRail
 from .widgets.toast import Toast
@@ -184,11 +185,13 @@ class MainWindow(QMainWindow):
         self.downloads = DownloadsPage()
         self.library_page = LibraryPage()
         self.settings = SettingsPage(self.config)
+        self.mods_page = ModsPage(self.config)
         self.discover.set_source_names(self._source_names())
         self.stack.addWidget(self.discover)
         self.library_page.add_downloads(self.downloads)
         self.stack.addWidget(self.library_page)
         self.stack.addWidget(self.settings)
+        self.stack.addWidget(self.mods_page)
         right_layout.addWidget(self.stack, 1)
 
         outer.addWidget(right, 1)
@@ -312,6 +315,9 @@ class MainWindow(QMainWindow):
         self._remote_timer.start()
 
     def _on_search_text(self, text: str) -> None:
+        if self.stack.currentWidget() is self.mods_page:
+            self.mods_page.set_search(text)
+            return
         if self.stack.currentWidget() is self.library_page:
             self._refresh_library()
             return
@@ -331,7 +337,7 @@ class MainWindow(QMainWindow):
 
     def _run_search(self) -> None:
         query = self.search_box.text().strip()
-        if self._closing:
+        if self._closing or self.stack.currentWidget() is self.mods_page:
             return
         if not query:
             self.remote_retry_button.hide()
@@ -761,7 +767,7 @@ class MainWindow(QMainWindow):
 
     # -- misc -------------------------------------------------------------
     def _switch_page(self, page: str) -> None:
-        mapping = {"discover": 0, "library": 1, "settings": 2}
+        mapping = {"discover": 0, "library": 1, "settings": 2, "mods": 3}
         self._search_timer.stop()
         self._remote_timer.stop()
         self._invalidate_search()
@@ -771,13 +777,18 @@ class MainWindow(QMainWindow):
         self._was_searching = False
         self.stack.setCurrentIndex(mapping.get(page, 0))
         self.rail.set_active_page(page if page != "settings" else "")
-        self.brand.setText(tr("nav.library") if page == "library" else tr("nav.discover"))
+        self.brand.setText(tr("nav.mods") if page == "mods" else tr("nav.library") if page == "library" else tr("nav.discover"))
         self.search_box.setVisible(page != "settings")
-        self.search_box.setPlaceholderText(tr("library.search.placeholder") if page == "library" else tr("search.placeholder"))
+        self.sync_button.setVisible(page != "mods")
+        self.search_box.setPlaceholderText(tr("mods.search" if page == "mods" else "library.search.placeholder" if page == "library" else "search.placeholder"))
         if page == "library":
             self._refresh_library()
         elif page == "discover":
             self._run_search()
+        elif page == "mods":
+            self.remote_retry_button.hide()
+            self.mods_page.set_search("")
+            self.mods_page.initialize()
 
     def _on_library_changed(self, folder: str) -> None:
         self.library.root = Path(folder)
@@ -817,6 +828,7 @@ class MainWindow(QMainWindow):
         self._invalidate_search()
         self._remote_cache.clear()
         self.discovery_controller.cleanup()
+        self.mods_page.cleanup()
         for worker in (self.sync_worker, self.detail_worker, self.download_worker):
             if worker is None:
                 continue

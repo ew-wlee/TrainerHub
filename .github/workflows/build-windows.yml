@@ -6,6 +6,7 @@ on:
       - "v0.3.0"
       - "v0.3.1"
       - "v0.3.2"
+      - "v1.0.0"
       - "main"
     tags:
       - "v*"
@@ -58,7 +59,7 @@ jobs:
 
           # Boot the bundled UI offscreen and let the app exit itself. A missing
           # Qt plugin or resource fails here instead of on a reviewer's machine.
-          $process = Start-Process -FilePath "dist/TrainerHub.exe" -PassThru
+          $process = Start-Process -FilePath "dist/TrainerHub.exe" -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(90000)) {
             $process.Kill()
             throw "TrainerHub.exe did not exit within 90s — UI failed to start"

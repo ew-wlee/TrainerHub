@@ -1,7 +1,7 @@
 [project]
 name = "trainerhub"
-version = "0.3.2"
-description = "TrainerHub — a desktop manager that aggregates, downloads and organises single-player game trainers."
+version = "1.0.0"
+description = "TrainerHub — a desktop manager for single-player game trainers and installed Mods."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

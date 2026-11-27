@@ -55,10 +55,20 @@ def folders(root: Path, paths: list[Path], old_format: bool = False) -> None:
     values = []
     for index, path in enumerate(paths):
         if old_format:
-            values.append(f'"{index}" {json.dumps(str(path))}')
+            values.append(f'"{index}" {json.dumps(str(path), ensure_ascii=False)}')
         else:
-            values.append(f'"{index}" {{ "path" {json.dumps(str(path))} "apps" {{ "123" "100" }} }}')
-    (root / "steamapps/libraryfolders.vdf").write_text('"libraryfolders" {\n' + "\n".join(values) + "\n}")
+            values.append(f'"{index}" {{ "path" {json.dumps(str(path), ensure_ascii=False)} "apps" {{ "123" "100" }} }}')
+    # Steam writes UTF-8 paths, not JSON's \\u escapes (which are not VDF escapes).
+    (root / "steamapps/libraryfolders.vdf").write_text('"libraryfolders" {\n' + "\n".join(values) + "\n}", encoding="utf-8")
+
+
+def symlink_or_skip(link: Path, target: Path, *, directory: bool = False) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
 
 
 def test_vdf_quotes_escapes_comments_and_nested_objects():
@@ -160,14 +170,14 @@ def test_missing_install_and_symlink_escape_rejected(tmp_path):
     assert not scan_steam([str(root)]).games
     outside = tmp_path / "outside"
     outside.mkdir()
-    (root / "steamapps/common/Hades").symlink_to(outside, target_is_directory=True)
+    symlink_or_skip(root / "steamapps/common/Hades", outside, directory=True)
     assert not scan_steam([str(root)]).games
 
 
 def test_symlink_manifest_outside_library_rejected(tmp_path):
     root, other = library(tmp_path / "Steam"), library(tmp_path / "Other")
     external = manifest(other)
-    (root / "steamapps/appmanifest_123.acf").symlink_to(external)
+    symlink_or_skip(root / "steamapps/appmanifest_123.acf", external)
     assert not scan_steam([str(root)]).games
 
 
@@ -337,7 +347,7 @@ def test_library_metadata_symlink_is_invalid_without_reading_target(tmp_path):
     root = library(tmp_path / "Steam")
     outside = tmp_path / "metadata"
     outside.write_text('"libraryfolders" {}')
-    (root / "steamapps/libraryfolders.vdf").symlink_to(outside)
+    symlink_or_skip(root / "steamapps/libraryfolders.vdf", outside)
     report = scan_steam([str(root)])
     assert report.library_status[str(root)] == "invalid"
     assert "symlink" in report.skipped[0]
@@ -348,7 +358,7 @@ def test_common_directory_symlink_escape_is_rejected(tmp_path):
     (root / "steamapps").mkdir(parents=True)
     outside = tmp_path / "outside"
     outside.mkdir()
-    (root / "steamapps/common").symlink_to(outside, target_is_directory=True)
+    symlink_or_skip(root / "steamapps/common", outside, directory=True)
     manifest(root)
     assert not scan_steam([str(root)]).games
 
@@ -365,7 +375,7 @@ def test_steamapps_symlink_escape_rejected_before_manifest_read(tmp_path, monkey
     root, other = tmp_path / "Steam", library(tmp_path / "Other")
     root.mkdir()
     manifest(other)
-    (root / "steamapps").symlink_to(other / "steamapps", target_is_directory=True)
+    symlink_or_skip(root / "steamapps", other / "steamapps", directory=True)
 
     def forbidden(path):
         raise AssertionError("Escaped metadata must not be read")
@@ -404,7 +414,7 @@ def test_three_roots_stateflags_escape_symlink_errors_do_not_hide_valid_game(tmp
     manifest(second, "456", "Updating", "Updating", flags=1048580)
     manifest(third, "789", "Escaping", "../escape", make_install=False)
     target = first / "steamapps/appmanifest_123.acf"
-    (third / "steamapps/appmanifest_123.acf").symlink_to(target)
+    symlink_or_skip(third / "steamapps/appmanifest_123.acf", target)
     folders(first, [first, second, third])
     report = scan_steam([str(first)])
     assert [game.appid for game in report.games] == ["123"]
